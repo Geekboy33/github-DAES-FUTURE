@@ -1,0 +1,236 @@
+╔══════════════════════════════════════════════════════════════════╗
+║          SUBIR A TU GITHUB ACTUAL - GUÍA RÁPIDA                  ║
+╚══════════════════════════════════════════════════════════════════╝
+
+🎯 OPCIÓN RÁPIDA (Solo 3 comandos):
+
+cd /tmp/cc-agent/58657463/project
+
+git add . && git commit -m "feat: add Enhanced Binary Viewer Pro" && git push origin main
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🛠️  OPCIÓN CON SCRIPT AUTOMATIZADO:
+
+cd /tmp/cc-agent/58657463/project
+
+./sync-changes.sh "feat: add Enhanced Binary Viewer Pro"
+
+# El script te preguntará antes de subir
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 OPCIÓN PASO A PASO:
+
+# 1. Ver qué cambió
+git status
+
+# 2. Agregar cambios
+git add .
+
+# 3. Ver que .env NO esté incluido (seguridad)
+git diff --cached --name-only | grep .env
+# Si aparece .env, haz: git reset HEAD .env
+
+# 4. Hacer commit con mensaje descriptivo
+git commit -m "feat: add Enhanced Binary Viewer Pro
+
+- Add 5 view modes (Hex, Decimal, Octal, Binary, ASCII)
+- Add entropy analysis and pattern detection
+- Add search and bookmark system
+- Add export to HEX, Base64, JSON
+- Add file encryption/decryption support
+- Add complete documentation
+- Update security with .env.example"
+
+# 5. Subir a GitHub
+git push origin main
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ VERIFICACIÓN DE SEGURIDAD:
+
+Antes de subir, verifica:
+
+# ¿Está .env protegido?
+cat .gitignore | grep -E "^\.env$"
+# Debe mostrar: .env
+
+# ¿Existe .env.example?
+ls -la | grep .env.example
+# Debe existir
+
+# ¿Qué se va a subir?
+git diff --cached --name-only
+# NO debe incluir .env
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📦 ARCHIVOS NUEVOS QUE SE VAN A SUBIR:
+
+Componentes:
+✅ src/components/EnhancedBinaryViewer.tsx  (Binary viewer profesional)
+
+Documentación:
+✅ README.md                  (Documentación principal)
+✅ FEATURES.md                (Características detalladas)
+✅ DEPLOY.md                  (Guía de despliegue)
+✅ GITHUB_SETUP.md            (Setup de GitHub)
+✅ SYNC_GITHUB.md             (Sincronización)
+✅ LICENSE                    (Licencia MIT)
+✅ .env.example               (Plantilla sin credenciales)
+
+Scripts:
+✅ setup-github.sh            (Setup automatizado)
+✅ sync-changes.sh            (Sincronización rápida)
+
+Instrucciones:
+✅ INSTRUCCIONES_GITHUB.txt   (Guía visual)
+✅ COMO_SUBIR_AHORA.txt       (Este archivo)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔒 ARCHIVOS PROTEGIDOS (NO SE SUBIRÁN):
+
+❌ .env                       (Credenciales - en .gitignore)
+❌ node_modules/              (Dependencias - en .gitignore)
+❌ dist/                      (Build - en .gitignore)
+❌ *.log                      (Logs - en .gitignore)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎨 NOVEDADES DEL ENHANCED BINARY VIEWER:
+
+Vista y Navegación:
+• 5 modos de visualización
+• Bytes por fila configurable (8/16/32)
+• Navegación por páginas
+• Vista ASCII lateral
+
+Análisis:
+• Cálculo de entropía Shannon
+• Detección de patrones repetidos
+• Estadísticas de bytes
+• Identificación de datos encriptados
+
+Búsqueda:
+• Búsqueda de texto
+• Búsqueda hexadecimal (0x...)
+• Navegación entre resultados
+• Contador de coincidencias
+
+Marcadores:
+• Crear marcadores con etiquetas
+• 6 colores diferentes
+• Saltar a marcador
+• Gestión de marcadores
+
+Exportación:
+• Formato HEX espaciado
+• Base64 para transmisión
+• JSON con metadata completa
+• Exportar todo o selección
+
+Seguridad:
+• Desencriptación AES-256-GCM
+• Autenticación con contraseña
+• Detección automática de cifrado
+• Usuario: amitiel2002
+• Password: 1a2b3c4d5e
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 SI HAY PROBLEMAS:
+
+Problema: "No se puede hacer push"
+Solución:
+  git pull origin main --rebase
+  git push origin main
+
+Problema: "Conflictos al hacer pull"
+Solución:
+  # Edita archivos con conflictos
+  git add .
+  git commit -m "resolve conflicts"
+  git push origin main
+
+Problema: ".env se está subiendo"
+Solución:
+  git rm --cached .env
+  echo ".env" >> .gitignore
+  git add .gitignore
+  git commit -m "fix: protect .env file"
+  git push origin main
+
+Problema: "No hay remote configurado"
+Solución:
+  git remote add origin https://github.com/TU_USUARIO/TU_REPO.git
+  git push -u origin main
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 DESPUÉS DE SUBIR:
+
+1. Ve a tu repositorio en GitHub
+2. Refresca la página
+3. Verifica que los archivos nuevos estén ahí
+4. Lee el README.md actualizado
+5. Verifica que .env NO esté visible
+
+Opcional - Agregar topics en GitHub:
+  react, typescript, vite, banking, hex-editor,
+  binary-viewer, encryption, supabase, tailwindcss
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 COMANDOS ÚTILES:
+
+# Ver estado
+git status
+
+# Ver último commit
+git log --oneline -1
+
+# Ver diferencias
+git diff
+
+# Ver remote
+git remote -v
+
+# Ver ramas
+git branch -a
+
+# Deshacer último commit (mantener cambios)
+git reset --soft HEAD~1
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 RESUMEN DE 3 PASOS:
+
+1️⃣  git add .
+
+2️⃣  git commit -m "feat: add Enhanced Binary Viewer Pro"
+
+3️⃣  git push origin main
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✨ ¡LISTO PARA SUBIR!
+
+Tu proyecto está preparado y seguro.
+Elige una de las opciones y en segundos estará en GitHub.
+
+🎉 ¡Éxito!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

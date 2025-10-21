@@ -1,0 +1,519 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 🎨 Paleta de Colores Futurista - Negro + Verde Neón Tipo Pantalla Iluminada */
+:root {
+  --neon-green: #00ff88;
+  --neon-green-dim: #00cc6a;
+  --neon-green-bright: #00ffaa;
+  --matrix-green: #0f0;
+  --cyber-green: #39ff14;
+  --dark-bg: #000000;
+  --dark-bg-light: #0a0a0a;
+  --dark-panel: #0d0d0d;
+  --dark-panel-hover: #141414;
+  --dark-border: #1a1a1a;
+  --text-primary: #e0ffe0;
+  --text-secondary: #80ff80;
+  --text-dim: #4d7c4d;
+  --glow-green: 0 0 10px rgba(0, 255, 136, 0.5);
+  --glow-green-strong: 0 0 20px rgba(0, 255, 136, 0.8);
+  --glow-green-ultra: 0 0 30px rgba(0, 255, 136, 1);
+}
+
+/* Scrollbar personalizado con efecto neón verde */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--neon-green) rgba(0, 0, 0, 0.9);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid var(--dark-border);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--neon-green) 0%, var(--neon-green-dim) 100%);
+  border-radius: 5px;
+  box-shadow: var(--glow-green);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--neon-green-bright) 0%, var(--neon-green) 100%);
+  box-shadow: var(--glow-green-strong);
+}
+
+/* Contenedor principal */
+body {
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  background-color: var(--dark-bg);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Efectos de brillo para elementos interactivos */
+.glow-green {
+  box-shadow: var(--glow-green);
+  transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.glow-green:hover {
+  box-shadow: var(--glow-green-strong);
+  transform: translateY(-1px);
+}
+
+.glow-green-ultra {
+  box-shadow: var(--glow-green-ultra);
+}
+
+/* Animación de pulso verde neón */
+@keyframes pulse-green {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+  }
+  50% {
+    opacity: 0.9;
+    box-shadow: 0 0 25px rgba(0, 255, 136, 0.9);
+  }
+}
+
+.pulse-green {
+  animation: pulse-green 2s ease-in-out infinite;
+}
+
+/* Animación de parpadeo tipo matriz */
+@keyframes blink-matrix {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.blink-matrix {
+  animation: blink-matrix 1.5s ease-in-out infinite;
+}
+
+/* Texto con efecto neón verde */
+.text-neon {
+  color: var(--neon-green);
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.8),
+               0 0 20px rgba(0, 255, 136, 0.6),
+               0 0 30px rgba(0, 255, 136, 0.4);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.text-neon-bright {
+  color: var(--neon-green-bright);
+  text-shadow: 0 0 15px rgba(0, 255, 170, 1),
+               0 0 30px rgba(0, 255, 170, 0.8),
+               0 0 45px rgba(0, 255, 170, 0.6);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.text-cyber {
+  color: var(--cyber-green);
+  text-shadow: 0 0 8px rgba(57, 255, 20, 0.8);
+  font-weight: 600;
+}
+
+/* Bordes con brillo verde */
+.border-glow {
+  border-color: var(--neon-green);
+  box-shadow: inset 0 0 10px rgba(0, 255, 136, 0.2),
+              0 0 10px rgba(0, 255, 136, 0.3);
+}
+
+.border-glow-strong {
+  border-color: var(--neon-green-bright);
+  box-shadow: inset 0 0 15px rgba(0, 255, 170, 0.4),
+              0 0 15px rgba(0, 255, 170, 0.5);
+}
+
+/* Paneles con efecto de vidrio oscuro */
+.glass-panel {
+  background: rgba(13, 13, 13, 0.8);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.7),
+              inset 0 0 20px rgba(0, 255, 136, 0.05);
+}
+
+.glass-panel:hover {
+  border-color: rgba(0, 255, 136, 0.4);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.7),
+              inset 0 0 20px rgba(0, 255, 136, 0.1),
+              0 0 20px rgba(0, 255, 136, 0.2);
+}
+
+/* Botones con estilo cyber */
+.btn-cyber {
+  background: linear-gradient(135deg, rgba(0, 255, 136, 0.15) 0%, rgba(0, 204, 106, 0.15) 100%);
+  border: 2px solid var(--neon-green);
+  color: var(--neon-green-bright);
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.8);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+  transition: all 0.3s ease;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.btn-cyber:hover {
+  background: linear-gradient(135deg, rgba(0, 255, 136, 0.25) 0%, rgba(0, 204, 106, 0.25) 100%);
+  border-color: var(--neon-green-bright);
+  box-shadow: 0 0 25px rgba(0, 255, 136, 0.6),
+              inset 0 0 15px rgba(0, 255, 136, 0.2);
+  transform: translateY(-2px);
+}
+
+.btn-cyber:active {
+  transform: translateY(0);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.4);
+}
+
+/* Inputs con estilo futurista */
+.input-cyber {
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  color: var(--text-primary);
+  transition: all 0.3s ease;
+}
+
+.input-cyber:focus {
+  outline: none;
+  border-color: var(--neon-green);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.4),
+              inset 0 0 10px rgba(0, 255, 136, 0.1);
+  background: rgba(0, 0, 0, 0.8);
+}
+
+/* Tarjetas con efecto holográfico */
+.card-hologram {
+  background: linear-gradient(135deg, 
+    rgba(13, 13, 13, 0.95) 0%, 
+    rgba(10, 10, 10, 0.95) 50%, 
+    rgba(13, 13, 13, 0.95) 100%);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8),
+              inset 0 0 30px rgba(0, 255, 136, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.card-hologram::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg, 
+    transparent 30%, 
+    rgba(0, 255, 136, 0.05) 50%, 
+    transparent 70%);
+  animation: hologram-shine 4s ease-in-out infinite;
+}
+
+@keyframes hologram-shine {
+  0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+  100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+}
+
+/* Líneas divisoras con brillo */
+.divider-glow {
+  height: 1px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    var(--neon-green) 50%, 
+    transparent 100%);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+}
+
+/* Badges con estilo neón */
+.badge-neon {
+  background: rgba(0, 255, 136, 0.15);
+  border: 1px solid var(--neon-green);
+  color: var(--neon-green-bright);
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.8);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+  font-weight: 600;
+}
+
+/* Efectos de grid futurista */
+.grid-cyber {
+  background-image: 
+    linear-gradient(rgba(0, 255, 136, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 136, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Selección de texto personalizada */
+::selection {
+  background: rgba(0, 255, 136, 0.3);
+  color: var(--text-primary);
+}
+
+::-moz-selection {
+  background: rgba(0, 255, 136, 0.3);
+  color: var(--text-primary);
+}
+
+/* ============================================
+   MEJORAS DE UX - Nuevas Animaciones
+   ============================================ */
+
+/* Fade in animation */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* Scale in animation */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.3s ease-out;
+}
+
+/* Skeleton loading animation */
+@keyframes skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-skeleton {
+  animation: skeleton 1.5s ease-in-out infinite;
+}
+
+/* Ripple effect */
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.ripple-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple-effect::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(0, 255, 136, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.ripple-effect:active::after {
+  width: 300px;
+  height: 300px;
+}
+
+/* Hover card elevation */
+.hover-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(0, 255, 136, 0.3);
+}
+
+/* Button loading state */
+.button-loading {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.button-loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  left: 50%;
+  margin-left: -8px;
+  margin-top: -8px;
+  border: 2px solid #00ff88;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Slide in from right */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+/* Slide in from left */
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.3s ease-out;
+}
+
+/* Bounce animation */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-bounce-subtle {
+  animation: bounce 2s ease-in-out infinite;
+}
+
+/* Glow pulse on hover */
+.glow-on-hover {
+  transition: all 0.3s ease;
+}
+
+.glow-on-hover:hover {
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.6),
+              inset 0 0 20px rgba(0, 255, 136, 0.1);
+}
+
+/* Focus visible improvements */
+*:focus-visible {
+  outline: 2px solid var(--neon-green);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(0, 255, 136, 0.2);
+}
+
+/* Shimmer effect */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 255, 136, 0) 0%,
+    rgba(0, 255, 136, 0.1) 50%,
+    rgba(0, 255, 136, 0) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Progress bar glow */
+.progress-glow {
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.6),
+              inset 0 0 10px rgba(0, 255, 136, 0.3);
+}
+
+/* Card gradient hover */
+.card-gradient-hover {
+  position: relative;
+  overflow: hidden;
+}
+
+.card-gradient-hover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(0, 255, 136, 0.05) 0%,
+    transparent 50%,
+    rgba(0, 255, 136, 0.05) 100%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.card-gradient-hover:hover::before {
+  opacity: 1;
+}
+
+/* Notification badge pulse */
+@keyframes badge-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.1);
+  }
+}
+
+.badge-pulse {
+  animation: badge-pulse 2s ease-in-out infinite;
+}
