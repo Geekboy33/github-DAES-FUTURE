@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import {
   Upload, Download, FileText, Binary, Gauge, ChevronDown, ChevronRight,
   Lock, Unlock, AlertCircle, Key, Shield, Database, Activity,
-  FileSearch, Decrypt, CheckCircle, XCircle, AlertTriangle,
+  FileSearch, CheckCircle, XCircle, AlertTriangle,
   Info, Play, Pause, RotateCcw, FileCheck, Zap, Eye, Hash
 } from 'lucide-react';
 import { FormatDetector, FormatSignature } from '../lib/format-detector';
@@ -434,7 +434,7 @@ export function DTC1BAnalyzer() {
 
   // Detectar tamaños de bloque
   const detectBlockSizes = (data: Uint8Array): number[] => {
-    const sizes = [];
+    const sizes: number[] = [];
     const testSizes = [64, 128, 256, 512, 1024, 2048, 4096];
 
     testSizes.forEach(size => {

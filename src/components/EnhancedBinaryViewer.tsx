@@ -13,7 +13,7 @@ import { DTC1BParser } from '../lib/dtc1b-parser';
 type ViewMode = 'hex' | 'ascii' | 'binary' | 'decimal' | 'octal' | 'mixed';
 type Endianness = 'big' | 'little';
 type DataType = 'uint8' | 'uint16' | 'uint32' | 'int8' | 'int16' | 'int32' | 'float32' | 'float64';
-type AnalysisMode = 'basic' | 'forensic' | 'cryptanalysis' | 'pattern';
+type AnalysisMode = 'basic' | 'forensic' | 'cryptanalysis' | 'pattern' | 'dtc1b';
 
 interface Selection {
   start: number;
@@ -61,6 +61,15 @@ interface CryptanalysisResult {
     timeEstimate: string;
     complexity: 'very weak' | 'weak' | 'medium' | 'strong' | 'very strong';
   };
+}
+
+interface BlockInfo {
+  offset: number;
+  size: number;
+  type: string;
+  content: string[];
+  amount?: string;
+  currency?: string;
 }
 
 export function EnhancedBinaryViewer() {
@@ -147,21 +156,15 @@ export function EnhancedBinaryViewer() {
           case fileError.NOT_FOUND_ERR:
             errorMessage = 'Archivo no encontrado';
             break;
-          case fileError.SECURITY_ERR:
-            errorMessage = 'Problemas de seguridad al acceder al archivo';
-            break;
-          case fileError.ABORT_ERR:
-            errorMessage = 'Lectura del archivo cancelada';
-            break;
-          case fileError.NOT_READABLE_ERR:
-            errorMessage = 'El archivo no se puede leer debido a problemas de permisos';
-            break;
-          case fileError.ENCODING_ERR:
-            errorMessage = 'Error de codificación del archivo';
-            break;
-          default:
-            errorMessage = `Error al leer archivo: ${fileError.message || 'Error desconocido'}`;
-        }
+        case fileError.SECURITY_ERR:
+          errorMessage = 'Problemas de seguridad al acceder al archivo';
+          break;
+        case fileError.ABORT_ERR:
+          errorMessage = 'Lectura del archivo cancelada';
+          break;
+        default:
+          errorMessage = `Error al leer archivo: ${fileError.message || 'Error desconocido'}`;
+      }
       }
 
       alert(`${errorMessage}\n\nSugerencias:\n• Verifica que el archivo existe\n• Comprueba los permisos del archivo\n• Usa "Generar archivo de ejemplo" para probar el visor`);
@@ -409,8 +412,8 @@ export function EnhancedBinaryViewer() {
     // Análisis de estructura básica
     const analysis = {
       fileSignature: `DTC1B-${data.length}-${Array.from(data.slice(0, 4)).map(b => b.toString(16)).join('')}`,
-      blocks: [],
-      currencyMatches: [],
+      blocks: [] as BlockInfo[],
+      currencyMatches: [] as Array<{ name: string; code: number[]; positions: number[] }>,
       structure: {
         hasValidHeader: false,
         blockSize: 128,
@@ -427,13 +430,13 @@ export function EnhancedBinaryViewer() {
 
     // Buscar códigos de moneda tradicionales
     const currencies = [
-      { name: 'USD', code: [0x55, 0x53, 0x44], positions: [] },
-      { name: 'EUR', code: [0x45, 0x55, 0x52], positions: [] },
-      { name: 'GBP', code: [0x47, 0x42, 0x50], positions: [] }
+      { name: 'USD', code: [0x55, 0x53, 0x44], positions: [] as number[] },
+      { name: 'EUR', code: [0x45, 0x55, 0x52], positions: [] as number[] },
+      { name: 'GBP', code: [0x47, 0x42, 0x50], positions: [] as number[] }
     ];
 
     currencies.forEach(currency => {
-      const positions = [];
+      const positions: number[] = [];
       for (let i = 0; i <= data.length - currency.code.length; i++) {
         let match = true;
         for (let j = 0; j < currency.code.length; j++) {
@@ -450,7 +453,7 @@ export function EnhancedBinaryViewer() {
     // Analizar bloques de 128 bytes
     for (let i = 0; i < data.length; i += 128) {
       const block = data.slice(i, Math.min(i + 128, data.length));
-      const blockInfo = {
+      const blockInfo: BlockInfo = {
         offset: i,
         size: block.length,
         type: 'unknown',
@@ -1728,7 +1731,7 @@ export function EnhancedBinaryViewer() {
                           <div className="mb-4">
                             <p className="text-sm text-slate-400 mb-2">Palabras Clave Financieras</p>
                             <div className="flex flex-wrap gap-1">
-                              {Object.entries(dtc1bAnalysis.potential_data.financial_keywords).slice(0, 8).map(([keyword, count]) => (
+                              {Object.entries(dtc1bAnalysis.potential_data.financial_keywords).slice(0, 8).map(([keyword, count]: [string, number]) => (
                                 <span key={keyword} className="px-2 py-1 bg-green-500/20 text-green-300 rounded text-xs">
                                   {keyword} ({count})
                                 </span>

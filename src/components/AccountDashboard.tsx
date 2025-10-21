@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Wallet, TrendingUp, TrendingDown, RefreshCw, AlertCircle, FileUp, FolderOpen, Eye, Database, Shield, Key, CheckCircle } from 'lucide-react';
 import { bankingStore, Account, Transfer } from '../lib/store';
 import { DTC1BParser } from '../lib/dtc1b-parser';
@@ -7,14 +7,105 @@ import { balanceStore, formatCurrency, type CurrencyBalance } from '../lib/balan
 import { useLanguage } from '../lib/i18n.tsx';
 import { toast } from './ui/Toast';
 
+type SortOrder = 'currency' | 'balance-high' | 'balance-low' | 'date-new' | 'date-old' | 'status';
+
+function sortBalances(balancesList: CurrencyBalance[], order: 'amount-high' | 'amount-low' | 'currency' | 'transactions'): CurrencyBalance[] {
+  const sorted = [...balancesList];
+  
+  switch (order) {
+    case 'amount-high':
+      return sorted.sort((a, b) => Number(b.totalAmount - a.totalAmount));
+    case 'amount-low':
+      return sorted.sort((a, b) => Number(a.totalAmount - b.totalAmount));
+    case 'currency':
+      return sorted.sort((a, b) => {
+        const currencyOrder: { [key: string]: number } = {
+          'USD': 1, 'EUR': 2, 'GBP': 3, 'CHF': 4
+        };
+        return (currencyOrder[a.currency] || 999) - (currencyOrder[b.currency] || 999);
+      });
+    case 'transactions':
+      return sorted.sort((a, b) => b.transactionCount - a.transactionCount);
+    default:
+      return sorted;
+  }
+}
+
+function sortAccounts(accountsList: Account[], order: SortOrder): Account[] {
+  const sorted = [...accountsList];
+  
+  switch (order) {
+    case 'currency':
+      // Ordenar por moneda: USD, EUR, GBP, CHF, resto
+      return sorted.sort((a, b) => {
+        const currencyOrder: { [key: string]: number } = {
+          'USD': 1,
+          'EUR': 2,
+          'GBP': 3,
+          'CHF': 4
+        };
+        
+        const orderA = currencyOrder[a.currencyISO] || 999;
+        const orderB = currencyOrder[b.currencyISO] || 999;
+        
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        
+        // Si tienen la misma prioridad, ordenar por balance (mayor a menor)
+        return Number(b.balanceMinorUnits - a.balanceMinorUnits);
+      });
+      
+    case 'balance-high':
+      // Mayor balance primero
+      return sorted.sort((a, b) => Number(b.balanceMinorUnits - a.balanceMinorUnits));
+      
+    case 'balance-low':
+      // Menor balance primero
+      return sorted.sort((a, b) => Number(a.balanceMinorUnits - b.balanceMinorUnits));
+      
+    case 'date-new':
+      // Más reciente primero
+      return sorted.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      
+    case 'date-old':
+      // Más antiguo primero
+      return sorted.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      
+    case 'status':
+      // Ordenar por estado: active, frozen, closed
+      return sorted.sort((a, b) => {
+        const statusOrder: { [key: string]: number } = {
+          'active': 1,
+          'frozen': 2,
+          'closed': 3
+        };
+        return (statusOrder[a.status] || 999) - (statusOrder[b.status] || 999);
+      });
+      
+    default:
+      return sorted;
+  }
+}
+
 export function AccountDashboard() {
   const { t } = useLanguage();
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [rawAccounts, setRawAccounts] = useState<Account[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showFileLoader, setShowFileLoader] = useState(false);
   const [analyzedBalances, setAnalyzedBalances] = useState<CurrencyBalance[]>([]);
+  const [sortOrder, setSortOrder] = useState<SortOrder>('currency');
+  const [balanceSortOrder, setBalanceSortOrder] = useState<'amount-high' | 'amount-low' | 'currency' | 'transactions'>('amount-high');
+
+  const sortedBalances = useMemo(() => {
+    return sortBalances(analyzedBalances, balanceSortOrder);
+  }, [analyzedBalances, balanceSortOrder]);
+
+  const accounts = useMemo(() => {
+    return sortAccounts(rawAccounts, sortOrder);
+  }, [rawAccounts, sortOrder]);
 
   useEffect(() => {
     loadAccounts();
@@ -43,32 +134,13 @@ export function AccountDashboard() {
   }, [selectedAccount]);
 
   const loadAccounts = () => {
-    // Cargar cuentas y ordenarlas por moneda: USD, EUR, GBP, CHF, resto
     const allAccounts = bankingStore.getAccounts();
-    const sortedAccounts = allAccounts.sort((a, b) => {
-      const currencyOrder: { [key: string]: number } = {
-        'USD': 1,
-        'EUR': 2,
-        'GBP': 3,
-        'CHF': 4
-      };
-      
-      const orderA = currencyOrder[a.currencyISO] || 999;
-      const orderB = currencyOrder[b.currencyISO] || 999;
-      
-      if (orderA !== orderB) {
-        return orderA - orderB;
-      }
-      
-      // Si tienen la misma prioridad, ordenar por balance (mayor a menor)
-      return Number(b.balanceMinorUnits - a.balanceMinorUnits);
-    });
     
-    setAccounts(sortedAccounts);
+    setRawAccounts(allAccounts);
     
     // Guardar balances en localStorage
     const balances: { [currency: string]: string } = {};
-    sortedAccounts.forEach(acc => {
+    allAccounts.forEach(acc => {
       if (!balances[acc.currencyISO]) {
         balances[acc.currencyISO] = '0';
       }
@@ -76,7 +148,8 @@ export function AccountDashboard() {
     });
     localStorage.setItem('currency_balances', JSON.stringify(balances));
     
-    if (!selectedAccount && sortedAccounts.length > 0) {
+    if (!selectedAccount && allAccounts.length > 0) {
+      const sortedAccounts = sortAccounts(allAccounts, sortOrder);
       setSelectedAccount(sortedAccounts[0]);
     }
   };
@@ -250,8 +323,27 @@ export function AccountDashboard() {
               <CheckCircle className="w-8 h-8 text-[#00ff88] pulse-green" />
             </div>
 
+            {/* Selector de ordenamiento para balances */}
+            <div className="mb-4 flex items-center gap-2">
+              <label className="text-xs text-[#80ff80] font-medium whitespace-nowrap">
+                Ordenar balances:
+              </label>
+              <select
+                value={balanceSortOrder}
+                onChange={(e) => setBalanceSortOrder(e.target.value as 'amount-high' | 'amount-low' | 'currency' | 'transactions')}
+                className="flex-1 px-3 py-2 bg-[#0a0a0a] border border-[#00ff88]/30 hover:border-[#00ff88]/50 rounded text-[#e0ffe0] text-sm focus:outline-none focus:border-[#00ff88] transition-all cursor-pointer"
+                title="Ordenar balances"
+                aria-label="Ordenar balances por criterio"
+              >
+                <option value="amount-high">💰 Monto (Mayor a Menor)</option>
+                <option value="amount-low">📊 Monto (Menor a Mayor)</option>
+                <option value="currency">💱 Moneda (USD, EUR, GBP, CHF)</option>
+                <option value="transactions">📈 Transacciones (Más a Menos)</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 max-h-64 overflow-y-auto">
-              {analyzedBalances.map((balance, index) => {
+              {sortedBalances.map((balance, index) => {
                 const isMainCurrency = ['USD', 'EUR', 'GBP', 'CHF'].includes(balance.currency);
                 return (
                   <div 
@@ -291,24 +383,47 @@ export function AccountDashboard() {
 
       <div className="flex-1 grid grid-cols-3 gap-6 px-6 pb-6 overflow-hidden">
         <div className="bg-[#0d0d0d] rounded-lg border border-[#1a1a1a] flex flex-col overflow-hidden glass-panel">
-          <div className="flex items-center justify-between p-4 border-b border-[#1a1a1a]">
-            <h2 className="text-lg font-semibold text-[#e0ffe0]">{t.dashboardAccounts.charAt(0).toUpperCase() + t.dashboardAccounts.slice(1)}</h2>
+          <div className="p-4 border-b border-[#1a1a1a] space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[#e0ffe0]">{t.dashboardAccounts.charAt(0).toUpperCase() + t.dashboardAccounts.slice(1)}</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowFileLoader(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-[#00ff88] to-[#00cc6a] hover:from-[#00ffaa] hover:to-[#00ff88] text-black text-sm rounded transition-all shadow-[0_0_10px_rgba(0,255,136,0.3)] font-semibold"
+                >
+                  <FolderOpen className="w-3 h-3" />
+                  {t.dashboardLoadFiles}
+                </button>
+                <button
+                  onClick={loadAccounts}
+                  className="p-2 hover:bg-[#141414] rounded transition-colors border border-[#1a1a1a] hover:border-[#00ff88]"
+                  title={t.refresh}
+                  aria-label={t.refresh}
+                >
+                  <RefreshCw className="w-4 h-4 text-[#4d7c4d] hover:text-[#00ff88]" />
+                </button>
+              </div>
+            </div>
+            
+            {/* Selector de ordenamiento */}
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowFileLoader(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-[#00ff88] to-[#00cc6a] hover:from-[#00ffaa] hover:to-[#00ff88] text-black text-sm rounded transition-all shadow-[0_0_10px_rgba(0,255,136,0.3)] font-semibold"
+              <label className="text-xs text-[#80ff80] font-medium whitespace-nowrap">
+                Ordenar por:
+              </label>
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+                className="flex-1 px-3 py-2 bg-[#0a0a0a] border border-[#1a1a1a] hover:border-[#00ff88]/50 rounded text-[#e0ffe0] text-sm focus:outline-none focus:border-[#00ff88] transition-all cursor-pointer"
+                title="Ordenar cuentas"
+                aria-label="Ordenar cuentas por criterio"
               >
-                <FolderOpen className="w-3 h-3" />
-                {t.dashboardLoadFiles}
-              </button>
-              <button
-                onClick={loadAccounts}
-                className="p-2 hover:bg-[#141414] rounded transition-colors border border-[#1a1a1a] hover:border-[#00ff88]"
-                title={t.refresh}
-                aria-label={t.refresh}
-              >
-                <RefreshCw className="w-4 h-4 text-[#4d7c4d] hover:text-[#00ff88]" />
-              </button>
+                <option value="currency">💱 Moneda (USD, EUR, GBP, CHF)</option>
+                <option value="balance-high">💰 Balance (Mayor a Menor)</option>
+                <option value="balance-low">📊 Balance (Menor a Mayor)</option>
+                <option value="date-new">📅 Fecha (Más Reciente)</option>
+                <option value="date-old">📆 Fecha (Más Antiguo)</option>
+                <option value="status">🔰 Estado (Activo, Congelado, Cerrado)</option>
+              </select>
             </div>
           </div>
 
