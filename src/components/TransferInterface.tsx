@@ -1,53 +1,122 @@
 import { useState, useEffect } from 'react';
-import { Send, AlertCircle, CheckCircle, Key } from 'lucide-react';
-import { bankingStore, Account } from '../lib/store';
+import { Send, AlertCircle, CheckCircle, Key, DollarSign, FileText, TrendingDown, History, Wallet } from 'lucide-react';
+import { transactionsStore, FileAccount, Transaction } from '../lib/transactions-store';
 import { CryptoUtils } from '../lib/crypto';
-import { DTC1BParser } from '../lib/dtc1b-parser';
 
 export function TransferInterface() {
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [fromAccountId, setFromAccountId] = useState('');
-  const [toAccountId, setToAccountId] = useState('');
+  const [accounts, setAccounts] = useState<FileAccount[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<FileAccount | null>(null);
+  const [selectedCurrency, setSelectedCurrency] = useState('');
+  const [recipientAddress, setRecipientAddress] = useState('');
+  const [recipientName, setRecipientName] = useState('');
   const [amount, setAmount] = useState('');
-  const [reference, setReference] = useState('');
+  const [description, setDescription] = useState('');
+  const [fee, setFee] = useState('0');
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
-  const [hmacSignature, setHmacSignature] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [result, setResult] = useState<{ success: boolean; message: string; transactionId?: string } | null>(null);
+  const [currentBalance, setCurrentBalance] = useState<number>(0);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [transactionHistory, setTransactionHistory] = useState<Transaction[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
-    setAccounts(bankingStore.getAccounts());
+    loadAccounts();
   }, []);
 
   useEffect(() => {
-    generateHMAC();
-  }, [fromAccountId, toAccountId, amount, reference, apiSecret]);
+    if (selectedAccount && selectedCurrency) {
+      loadCurrentBalance();
+      loadTransactionHistory();
+    }
+  }, [selectedAccount, selectedCurrency]);
 
-  const generateHMAC = async () => {
-    if (!fromAccountId || !toAccountId || !amount || !reference || !apiSecret) {
-      setHmacSignature('');
+  useEffect(() => {
+    validateTransfer();
+  }, [amount, fee, currentBalance]);
+
+  const loadAccounts = async () => {
+    try {
+      setLoadingAccounts(true);
+      const loadedAccounts = await transactionsStore.getAvailableAccounts();
+      setAccounts(loadedAccounts);
+
+      if (loadedAccounts.length > 0) {
+        setSelectedAccount(loadedAccounts[0]);
+        if (loadedAccounts[0].balances.length > 0) {
+          setSelectedCurrency(loadedAccounts[0].balances[0].currency);
+        }
+      }
+    } catch (error) {
+      console.error('[TransferInterface] Error loading accounts:', error);
+    } finally {
+      setLoadingAccounts(false);
+    }
+  };
+
+  const loadCurrentBalance = async () => {
+    if (!selectedAccount || !selectedCurrency) return;
+
+    try {
+      const balance = await transactionsStore.getCurrentBalance(
+        selectedAccount.fileHash,
+        selectedCurrency
+      );
+      setCurrentBalance(balance);
+    } catch (error) {
+      console.error('[TransferInterface] Error loading balance:', error);
+    }
+  };
+
+  const loadTransactionHistory = async () => {
+    if (!selectedAccount) return;
+
+    try {
+      const history = await transactionsStore.getTransactionHistory(selectedAccount.fileHash, 20);
+      setTransactionHistory(history);
+    } catch (error) {
+      console.error('[TransferInterface] Error loading history:', error);
+    }
+  };
+
+  const validateTransfer = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      setValidationError(null);
       return;
     }
 
-    try {
-      const timestamp = new Date().toISOString();
-      const body = JSON.stringify({
-        from_account: fromAccountId,
-        to_account: toAccountId,
-        amount: Math.round(parseFloat(amount) * 100),
-        currency: accounts.find(a => a.id === fromAccountId)?.currencyISO,
-        reference,
-        timestamp
-      });
-
-      const payload = `POST|/transfer/send|${timestamp}|${body}`;
-      const signature = await CryptoUtils.hmacSHA256(apiSecret, payload);
-      setHmacSignature(signature);
-    } catch (error) {
-      console.error('HMAC generation failed:', error);
-      setHmacSignature('');
+    if (!selectedAccount || !selectedCurrency) {
+      setValidationError('Selecciona una cuenta y moneda');
+      return;
     }
+
+    const transferAmount = parseFloat(amount);
+    const transferFee = parseFloat(fee) || 0;
+    const totalRequired = transferAmount + transferFee;
+
+    if (currentBalance < totalRequired) {
+      setValidationError(
+        `Fondos insuficientes. Disponible: ${currentBalance.toFixed(2)} ${selectedCurrency}, Requerido: ${totalRequired.toFixed(2)} ${selectedCurrency}`
+      );
+    } else {
+      setValidationError(null);
+    }
+  };
+
+  const handleAccountChange = (fileHash: string) => {
+    const account = accounts.find(a => a.fileHash === fileHash);
+    if (account) {
+      setSelectedAccount(account);
+      if (account.balances.length > 0) {
+        setSelectedCurrency(account.balances[0].currency);
+      }
+    }
+  };
+
+  const handleCurrencyChange = (currency: string) => {
+    setSelectedCurrency(currency);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -56,247 +125,416 @@ export function TransferInterface() {
     setResult(null);
 
     try {
-      if (!apiKey || !apiSecret) {
-        throw new Error('API credentials required');
+      if (!selectedAccount || !selectedCurrency) {
+        throw new Error('Selecciona una cuenta y moneda');
       }
 
-      const keyValid = await bankingStore.verifyAPIKey(apiKey, apiSecret);
-      if (!keyValid) {
-        throw new Error('Invalid API credentials');
+      if (!recipientAddress) {
+        throw new Error('Ingresa la dirección del destinatario');
       }
 
-      if (!keyValid.permissions.includes('transfer:write')) {
-        throw new Error('Insufficient permissions');
+      if (!amount || parseFloat(amount) <= 0) {
+        throw new Error('Ingresa un monto válido');
       }
 
-      const fromAccount = accounts.find(a => a.id === fromAccountId);
-      if (!fromAccount) {
-        throw new Error('Source account not found');
+      const transferAmount = parseFloat(amount);
+      const transferFee = parseFloat(fee) || 0;
+
+      const validation = await transactionsStore.validateSufficientFunds(
+        selectedAccount.fileHash,
+        selectedCurrency,
+        transferAmount,
+        transferFee
+      );
+
+      if (!validation.valid) {
+        throw new Error(
+          `Fondos insuficientes. Disponible: ${validation.currentBalance.toFixed(2)} ${selectedCurrency}, Requerido: ${validation.required.toFixed(2)} ${selectedCurrency}`
+        );
       }
 
-      const amountMinorUnits = BigInt(Math.round(parseFloat(amount) * 100));
+      const debitResult = await transactionsStore.createDebitTransaction(
+        selectedAccount.fileHash,
+        selectedAccount.fileName,
+        selectedCurrency,
+        transferAmount,
+        recipientAddress,
+        recipientName || 'Sin nombre',
+        description || `Transferencia de ${transferAmount} ${selectedCurrency}`,
+        transferFee,
+        'Counterparty API'
+      );
 
-      const transfer = await bankingStore.createTransfer({
-        fromAccountId,
-        toAccountId,
-        amountMinorUnits,
-        currencyISO: fromAccount.currencyISO,
-        reference,
-        status: 'pending',
-        metadata: {
-          apiKeyId: keyValid.id,
-          hmacSignature,
-          timestamp: new Date().toISOString()
-        },
-        initiatedBy: keyValid.id
-      });
+      if (!debitResult.success) {
+        throw new Error(debitResult.error || 'Error al crear la transacción');
+      }
+
+      console.log('[TransferInterface] Transacción creada:', debitResult.transaction?.id);
+
+      await transactionsStore.updateTransactionStatus(
+        debitResult.transaction!.id,
+        'completed',
+        `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      );
 
       setResult({
         success: true,
-        message: `Transfer ${transfer.id} completed successfully`
+        message: `✅ Transferencia completada exitosamente!\n\nMonto: ${transferAmount} ${selectedCurrency}\nComisión: ${transferFee} ${selectedCurrency}\nDestinatario: ${recipientAddress}\n\nBalance anterior: ${debitResult.transaction!.balanceBefore.toFixed(2)} ${selectedCurrency}\nBalance nuevo: ${debitResult.transaction!.balanceAfter.toFixed(2)} ${selectedCurrency}`,
+        transactionId: debitResult.transaction!.id
       });
 
-      setFromAccountId('');
-      setToAccountId('');
       setAmount('');
-      setReference('');
+      setRecipientAddress('');
+      setRecipientName('');
+      setDescription('');
+      setFee('0');
 
-      setAccounts(bankingStore.getAccounts());
+      await loadCurrentBalance();
+      await loadTransactionHistory();
+
     } catch (error) {
+      console.error('[TransferInterface] Transfer error:', error);
       setResult({
         success: false,
-        message: error instanceof Error ? error.message : 'Transfer failed'
+        message: error instanceof Error ? error.message : 'Error desconocido al procesar la transferencia'
       });
     } finally {
       setLoading(false);
     }
   };
 
-  const fromAccount = accounts.find(a => a.id === fromAccountId);
-  const toAccount = accounts.find(a => a.id === toAccountId);
-  const amountValue = parseFloat(amount) || 0;
-  const amountMinorUnits = BigInt(Math.round(amountValue * 100));
+  const formatCurrency = (amount: number, currency: string): string => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+  };
 
-  const canSubmit = fromAccountId && toAccountId && amount && reference && apiKey && apiSecret &&
-    fromAccountId !== toAccountId &&
-    amountValue > 0 &&
-    fromAccount &&
-    fromAccount.balanceMinorUnits >= amountMinorUnits;
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'completed': return 'text-green-400';
+      case 'pending': return 'text-yellow-400';
+      case 'failed': return 'text-red-400';
+      case 'cancelled': return 'text-gray-400';
+      default: return 'text-gray-400';
+    }
+  };
+
+  const getStatusLabel = (status: string): string => {
+    switch (status) {
+      case 'completed': return 'Completada';
+      case 'pending': return 'Pendiente';
+      case 'failed': return 'Fallida';
+      case 'cancelled': return 'Cancelada';
+      default: return status;
+    }
+  };
+
+  if (loadingAccounts) {
+    return (
+      <div className="min-h-screen bg-black p-6 flex items-center justify-center">
+        <div className="text-[#00ff88] text-xl">Cargando cuentas disponibles...</div>
+      </div>
+    );
+  }
+
+  if (accounts.length === 0) {
+    return (
+      <div className="min-h-screen bg-black p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-gradient-to-r from-[#0a0a0a] to-[#0d0d0d] rounded-xl border border-[#00ff88]/20 p-8 text-center">
+            <AlertCircle className="w-16 h-16 text-[#ffa500] mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-[#e0ffe0] mb-4">No hay cuentas disponibles</h2>
+            <p className="text-[#80ff80] mb-6">
+              Para realizar transferencias, primero debes procesar un archivo DTC1B completo en el Analizador de Archivos Grandes.
+            </p>
+            <p className="text-[#4d7c4d] text-sm">
+              El archivo debe estar procesado al 100% para que los balances estén disponibles para transferencias.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <div className="bg-[#0d0d0d] rounded-lg border border-[#1a1a1a] overflow-hidden">
-        <div className="p-6 border-b border-[#1a1a1a]">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-blue-600 rounded-lg">
-              <Send className="w-6 h-6 text-white" />
-            </div>
+    <div className="min-h-screen bg-black p-6">
+      <div className="max-w-6xl mx-auto pb-24">
+        <div className="bg-gradient-to-r from-[#0a0a0a] to-[#0d0d0d] rounded-xl shadow-[0_0_30px_rgba(0,255,136,0.2)] p-8 mb-6 border border-[#00ff88]/20">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-xl font-bold text-white">Secure Transfer</h2>
-              <p className="text-sm text-slate-400">HMAC-authenticated fund transfer</p>
+              <h1 className="text-4xl font-bold text-[#e0ffe0] mb-2 flex items-center gap-3">
+                <Send className="w-10 h-10 text-[#00ff88]" />
+                <span className="text-cyber">Transferencias Desde DTC1B</span>
+              </h1>
+              <p className="text-[#80ff80] text-lg">
+                Transfiere fondos desde tus archivos DTC1B procesados
+              </p>
             </div>
+            <TrendingDown className="w-16 h-16 text-[#00ff88] opacity-20" />
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                From Account
-              </label>
-              <select
-                value={fromAccountId}
-                onChange={(e) => setFromAccountId(e.target.value)}
-                className="w-full bg-slate-700 text-white px-4 py-2 rounded-lg border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="">Select account...</option>
-                {accounts.filter(a => a.status === 'active').map(account => (
-                  <option key={account.id} value={account.id}>
-                    {account.accountRef} - {DTC1BParser.formatAmount(account.balanceMinorUnits, account.currencyISO)}
-                  </option>
-                ))}
-              </select>
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl p-6">
+            <h2 className="text-2xl font-bold text-[#e0ffe0] mb-6 flex items-center gap-2">
+              <DollarSign className="w-6 h-6 text-[#00ff88]" />
+              Nueva Transferencia
+            </h2>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                To Account
-              </label>
-              <select
-                value={toAccountId}
-                onChange={(e) => setToAccountId(e.target.value)}
-                className="w-full bg-slate-700 text-white px-4 py-2 rounded-lg border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="">Select account...</option>
-                {accounts.filter(a => a.status === 'active' && a.id !== fromAccountId).map(account => (
-                  <option key={account.id} value={account.id}>
-                    {account.accountRef} ({account.currencyISO})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-[#80ff80] mb-2">
+                    <Wallet className="w-4 h-4 inline mr-1" />
+                    Archivo DTC1B Origen
+                  </label>
+                  <select
+                    value={selectedAccount?.fileHash || ''}
+                    onChange={(e) => handleAccountChange(e.target.value)}
+                    className="w-full bg-[#0a0a0a] border border-[#1a1a1a] text-[#e0ffe0] px-4 py-2 rounded-lg focus:outline-none focus:border-[#00ff88] focus:ring-1 focus:ring-[#00ff88]"
+                    required
+                  >
+                    {accounts.map(account => (
+                      <option key={account.fileHash} value={account.fileHash}>
+                        {account.fileName} ({account.balances.length} monedas)
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Amount {fromAccount && `(${fromAccount.currencyISO})`}
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              className="w-full bg-slate-700 text-white px-4 py-2 rounded-lg border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-            {fromAccount && amountValue > 0 && (
-              <div className="mt-2 text-xs text-slate-400">
-                Remaining balance: {DTC1BParser.formatAmount(
-                  fromAccount.balanceMinorUnits - amountMinorUnits,
-                  fromAccount.currencyISO
-                )}
+                <div>
+                  <label className="block text-sm font-semibold text-[#80ff80] mb-2">
+                    Moneda
+                  </label>
+                  <select
+                    value={selectedCurrency}
+                    onChange={(e) => handleCurrencyChange(e.target.value)}
+                    className="w-full bg-[#0a0a0a] border border-[#1a1a1a] text-[#e0ffe0] px-4 py-2 rounded-lg focus:outline-none focus:border-[#00ff88] focus:ring-1 focus:ring-[#00ff88]"
+                    required
+                  >
+                    {selectedAccount?.balances.map(balance => (
+                      <option key={balance.currency} value={balance.currency}>
+                        {balance.currency} - {formatCurrency(balance.totalAmount, balance.currency)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {selectedAccount && selectedCurrency && (
+                <div className="bg-[#0a0a0a] border border-[#00ff88]/30 rounded-lg p-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[#80ff80]">Balance Actual Disponible:</span>
+                    <span className="text-2xl font-bold text-[#00ff88]">
+                      {formatCurrency(currentBalance, selectedCurrency)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-semibold text-[#80ff80] mb-2">
+                  Dirección del Destinatario
+                </label>
+                <input
+                  type="text"
+                  value={recipientAddress}
+                  onChange={(e) => setRecipientAddress(e.target.value)}
+                  className="w-full bg-[#0a0a0a] border border-[#1a1a1a] text-[#e0ffe0] px-4 py-2 rounded-lg focus:outline-none focus:border-[#00ff88] focus:ring-1 focus:ring-[#00ff88] font-mono"
+                  placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-[#80ff80] mb-2">
+                  Nombre del Destinatario (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={recipientName}
+                  onChange={(e) => setRecipientName(e.target.value)}
+                  className="w-full bg-[#0a0a0a] border border-[#1a1a1a] text-[#e0ffe0] px-4 py-2 rounded-lg focus:outline-none focus:border-[#00ff88] focus:ring-1 focus:ring-[#00ff88]"
+                  placeholder="John Doe"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-[#80ff80] mb-2">
+                    Monto
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full bg-[#0a0a0a] border border-[#1a1a1a] text-[#e0ffe0] px-4 py-2 rounded-lg focus:outline-none focus:border-[#00ff88] focus:ring-1 focus:ring-[#00ff88]"
+                    placeholder="0.00"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-[#80ff80] mb-2">
+                    Comisión
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={fee}
+                    onChange={(e) => setFee(e.target.value)}
+                    className="w-full bg-[#0a0a0a] border border-[#1a1a1a] text-[#e0ffe0] px-4 py-2 rounded-lg focus:outline-none focus:border-[#00ff88] focus:ring-1 focus:ring-[#00ff88]"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-[#80ff80] mb-2">
+                  Descripción (Opcional)
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full bg-[#0a0a0a] border border-[#1a1a1a] text-[#e0ffe0] px-4 py-2 rounded-lg focus:outline-none focus:border-[#00ff88] focus:ring-1 focus:ring-[#00ff88]"
+                  rows={3}
+                  placeholder="Descripción de la transferencia..."
+                />
+              </div>
+
+              {validationError && (
+                <div className="bg-[#ff6b6b]/20 border border-[#ff6b6b]/50 rounded-lg p-4 flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-[#ff6b6b] flex-shrink-0 mt-0.5" />
+                  <p className="text-[#ff6b6b] text-sm">{validationError}</p>
+                </div>
+              )}
+
+              {amount && !validationError && (
+                <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded-lg p-4">
+                  <h3 className="text-[#00ff88] font-semibold mb-2">Resumen de Transferencia</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-[#80ff80]">Monto:</span>
+                      <span className="text-[#e0ffe0] font-semibold">{parseFloat(amount).toFixed(2)} {selectedCurrency}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#80ff80]">Comisión:</span>
+                      <span className="text-[#e0ffe0] font-semibold">{parseFloat(fee).toFixed(2)} {selectedCurrency}</span>
+                    </div>
+                    <div className="border-t border-[#00ff88]/20 pt-2 flex justify-between">
+                      <span className="text-[#00ff88] font-bold">Total a Debitar:</span>
+                      <span className="text-[#00ff88] font-bold text-lg">
+                        {(parseFloat(amount) + parseFloat(fee)).toFixed(2)} {selectedCurrency}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#80ff80]">Nuevo Balance:</span>
+                      <span className="text-[#e0ffe0] font-semibold">
+                        {(currentBalance - parseFloat(amount) - parseFloat(fee)).toFixed(2)} {selectedCurrency}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading || !!validationError || !amount}
+                className="w-full bg-gradient-to-r from-[#00ff88] to-[#00cc6a] hover:from-[#00cc6a] hover:to-[#00aa55] text-black px-6 py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(0,255,136,0.3)] hover:shadow-[0_0_30px_rgba(0,255,136,0.5)]"
+              >
+                <Send className="w-5 h-5" />
+                {loading ? 'Procesando Transferencia...' : 'Ejecutar Transferencia'}
+              </button>
+            </form>
+
+            {result && (
+              <div className={`mt-6 ${result.success ? 'bg-[#00ff88]/10 border-[#00ff88]/50' : 'bg-[#ff6b6b]/10 border-[#ff6b6b]/50'} border rounded-lg p-4`}>
+                <div className="flex items-start gap-3">
+                  {result.success ? (
+                    <CheckCircle className="w-6 h-6 text-[#00ff88] flex-shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-6 h-6 text-[#ff6b6b] flex-shrink-0" />
+                  )}
+                  <div className="flex-1">
+                    <p className={`${result.success ? 'text-[#00ff88]' : 'text-[#ff6b6b]'} font-semibold mb-2`}>
+                      {result.success ? 'Transferencia Exitosa' : 'Error en Transferencia'}
+                    </p>
+                    <p className="text-[#e0ffe0] text-sm whitespace-pre-line">{result.message}</p>
+                    {result.transactionId && (
+                      <p className="text-[#4d7c4d] text-xs mt-2 font-mono">
+                        ID: {result.transactionId}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Reference
-            </label>
-            <input
-              type="text"
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
-              placeholder="TX-20251015-0001"
-              className="w-full bg-slate-700 text-white px-4 py-2 rounded-lg border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
+          <div className="lg:col-span-1 space-y-6">
+            <div className="bg-[#0d0d0d] border border-[#1a1a1a] rounded-xl p-6">
+              <h3 className="text-xl font-bold text-[#e0ffe0] mb-4 flex items-center gap-2">
+                <History className="w-5 h-5 text-[#00ff88]" />
+                Historial Reciente
+              </h3>
 
-          <div className="border-t border-[#1a1a1a] pt-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Key className="w-4 h-4 text-blue-400" />
-              <h3 className="text-sm font-semibold text-white">API Authentication</h3>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  API Key
-                </label>
-                <input
-                  type="text"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk_..."
-                  className="w-full bg-slate-700 text-white px-4 py-2 rounded-lg border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  API Secret
-                </label>
-                <input
-                  type="password"
-                  value={apiSecret}
-                  onChange={(e) => setApiSecret(e.target.value)}
-                  placeholder="sk_..."
-                  className="w-full bg-slate-700 text-white px-4 py-2 rounded-lg border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  required
-                />
-              </div>
-
-              {hmacSignature && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    HMAC-SHA256 Signature
-                  </label>
-                  <div className="bg-black p-3 rounded border border-slate-600">
-                    <code className="text-xs text-green-400 break-all">{hmacSignature}</code>
-                  </div>
+              {transactionHistory.length === 0 ? (
+                <p className="text-[#4d7c4d] text-sm text-center py-8">
+                  No hay transacciones registradas
+                </p>
+              ) : (
+                <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                  {transactionHistory.map(tx => (
+                    <div
+                      key={tx.id}
+                      className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-3"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <span className={`text-sm font-semibold ${getStatusColor(tx.status)}`}>
+                          {getStatusLabel(tx.status)}
+                        </span>
+                        <span className="text-xs text-[#4d7c4d]">
+                          {new Date(tx.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-xs text-[#80ff80]">Monto:</span>
+                          <span className="text-sm text-[#e0ffe0] font-semibold">
+                            -{tx.amount.toFixed(2)} {tx.currency}
+                          </span>
+                        </div>
+                        {tx.fee > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-xs text-[#80ff80]">Comisión:</span>
+                            <span className="text-xs text-[#4d7c4d]">
+                              -{tx.fee.toFixed(2)} {tx.currency}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-xs text-[#80ff80]">Balance After:</span>
+                          <span className="text-xs text-[#e0ffe0]">
+                            {tx.balanceAfter.toFixed(2)} {tx.currency}
+                          </span>
+                        </div>
+                        {tx.recipientAddress && (
+                          <div className="text-xs text-[#4d7c4d] truncate font-mono mt-2">
+                            → {tx.recipientAddress}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           </div>
-
-          {result && (
-            <div className={`p-4 rounded-lg flex items-start gap-3 ${
-              result.success ? 'bg-green-900/20 border border-green-700' : 'bg-red-900/20 border border-red-700'
-            }`}>
-              {result.success ? (
-                <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-              ) : (
-                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-              )}
-              <div className="flex-1">
-                <p className={`text-sm font-medium ${result.success ? 'text-green-300' : 'text-red-300'}`}>
-                  {result.message}
-                </p>
-              </div>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={!canSubmit || loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>Processing...</>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                Execute Transfer
-              </>
-            )}
-          </button>
-        </form>
+        </div>
       </div>
     </div>
   );
