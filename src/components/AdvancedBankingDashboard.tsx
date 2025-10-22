@@ -46,6 +46,15 @@ export function AdvancedBankingDashboard() {
 
   useEffect(() => {
     loadDashboardData();
+
+    const unsubscribeLedger = ledgerAccountsStore.subscribe((updatedAccounts) => {
+      console.log('[Dashboard] Ledger accounts updated:', updatedAccounts.length);
+      setLedgerAccounts(updatedAccounts);
+    });
+
+    return () => {
+      unsubscribeLedger();
+    };
   }, []);
 
   const loadDashboardData = async () => {
@@ -85,11 +94,11 @@ export function AdvancedBankingDashboard() {
     let completedCount = 0;
     let failedCount = 0;
 
-    accounts.forEach(account => {
-      account.balances.forEach(balance => {
-        currencies.add(balance.currency);
-        totalBalance += balance.totalAmount;
-      });
+    ledgerAccounts.forEach(account => {
+      if (account.balance > 0) {
+        currencies.add(account.currency);
+        totalBalance += account.balance;
+      }
     });
 
     transactions.forEach(tx => {
@@ -107,7 +116,7 @@ export function AdvancedBankingDashboard() {
 
     return {
       totalBalance,
-      totalAccounts: accounts.length,
+      totalAccounts: ledgerAccounts.filter(acc => acc.balance > 0).length,
       totalCurrencies: currencies.size,
       totalTransactions: transactions.length,
       pendingTransactions: pendingCount,
@@ -117,32 +126,25 @@ export function AdvancedBankingDashboard() {
       totalCredits,
       totalFees
     };
-  }, [accounts, transactions]);
+  }, [ledgerAccounts, transactions]);
 
   const currencyStats = useMemo<CurrencyStats[]>(() => {
     const statsMap = new Map<string, CurrencyStats>();
     const totalValue = dashboardStats.totalBalance;
 
-    accounts.forEach(account => {
-      account.balances.forEach(balance => {
-        if (!statsMap.has(balance.currency)) {
-          statsMap.set(balance.currency, {
-            currency: balance.currency,
-            balance: 0,
-            transactionCount: 0,
-            debitCount: 0,
-            creditCount: 0,
-            avgTransaction: 0,
-            largestTransaction: 0,
-            percentageOfTotal: 0
-          });
-        }
-
-        const stats = statsMap.get(balance.currency)!;
-        stats.balance += balance.totalAmount;
-        stats.transactionCount += balance.transactionCount;
-        stats.largestTransaction = Math.max(stats.largestTransaction, balance.largestTransaction);
-      });
+    ledgerAccounts.forEach(account => {
+      if (account.balance > 0) {
+        statsMap.set(account.currency, {
+          currency: account.currency,
+          balance: account.balance,
+          transactionCount: account.transactionCount,
+          debitCount: 0,
+          creditCount: 0,
+          avgTransaction: account.averageTransaction,
+          largestTransaction: account.largestTransaction,
+          percentageOfTotal: 0
+        });
+      }
     });
 
     transactions.forEach(tx => {
@@ -158,12 +160,11 @@ export function AdvancedBankingDashboard() {
 
     const result = Array.from(statsMap.values()).map(stats => ({
       ...stats,
-      avgTransaction: stats.transactionCount > 0 ? stats.balance / stats.transactionCount : 0,
       percentageOfTotal: totalValue > 0 ? (stats.balance / totalValue) * 100 : 0
     }));
 
     return result.sort((a, b) => b.balance - a.balance);
-  }, [accounts, transactions, dashboardStats.totalBalance]);
+  }, [ledgerAccounts, transactions, dashboardStats.totalBalance]);
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(tx => {
