@@ -27,7 +27,7 @@ export function GlobalProcessingIndicator() {
     return () => cleanup?.();
   }, []);
 
-  if (!processingState || processingState.status === 'idle') {
+  if (!processingState || processingState.status === 'idle' || processingState.progress >= 100) {
     return null;
   }
 
@@ -106,7 +106,7 @@ export function GlobalProcessingIndicator() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-96">
+    <div className="fixed bottom-4 right-4 z-[9999] w-96 animate-fade-in">
       <div className="bg-[#0d0d0d] border border-[#00ff88]/30 rounded-lg shadow-[0_0_20px_rgba(0,255,136,0.2)] overflow-hidden">
         {/* Header */}
         <div className={`${getStatusColor()} px-4 py-3 flex items-center justify-between`}>
@@ -229,17 +229,29 @@ export function GlobalProcessingIndicator() {
           )}
 
           {/* Botón para continuar proceso pausado */}
-          {showContinuePrompt && (processingState.status === 'paused' || processingState.progress < 100) && (
+          {processingState.status === 'paused' && (
             <button
               onClick={() => {
-                window.location.href = '#large-file-analyzer';
                 window.dispatchEvent(new CustomEvent('navigate-to-analyzer'));
               }}
-              className="w-full bg-gradient-to-r from-[#00ff88] to-[#00cc6a] hover:from-[#00cc6a] hover:to-[#00aa55] text-black px-4 py-2 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,255,136,0.3)]"
+              className="w-full bg-gradient-to-r from-[#ffa500] to-[#ff8c00] hover:from-[#ff8c00] hover:to-[#ff7700] text-black px-4 py-2 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,165,0,0.4)]"
             >
-              <RotateCcw className="w-4 h-4" />
-              Ir al Analizador para Continuar
+              <Play className="w-4 h-4" />
+              Ir al Analizador para Reanudar
             </button>
+          )}
+
+          {/* Mensaje de proceso activo */}
+          {processingState.status === 'processing' && (
+            <div className="bg-[#00ff88]/10 border border-[#00ff88]/30 rounded p-3 text-center">
+              <p className="text-[#00ff88] text-xs font-semibold flex items-center justify-center gap-2">
+                <Activity className="w-3 h-3 animate-spin" />
+                El archivo se está procesando en segundo plano
+              </p>
+              <p className="text-[#4d7c4d] text-xs mt-1">
+                Puedes navegar libremente sin interrumpir la carga
+              </p>
+            </div>
           )}
 
           {/* Mensaje de éxito */}

@@ -589,13 +589,24 @@ export function LargeFileDTC1BAnalyzer() {
                   style={{ width: `${analysis.progress}%` }}
                 />
               </div>
-              <div className="flex justify-between text-xs sm:text-sm text-[#80ff80]">
+              <div className="flex justify-between text-xs sm:text-sm text-[#80ff80] mb-2">
                 <span className="font-semibold">{analysis.progress.toFixed(1)}% procesado</span>
                 <span className="font-mono">
                   {(analysis.bytesProcessed / (1024 * 1024)).toFixed(0)} MB /{' '}
                   {(analysis.fileSize / (1024 * 1024)).toFixed(0)} MB
                 </span>
               </div>
+              {isProcessing && (
+                <div className="bg-[#00ff88]/10 border border-[#00ff88]/20 rounded-lg p-2 mt-2">
+                  <p className="text-[#00ff88] text-xs font-semibold flex items-center justify-center gap-2">
+                    <Activity className="w-3 h-3 animate-spin" />
+                    ✓ Puedes navegar a otros módulos sin detener el proceso
+                  </p>
+                  <p className="text-[#4d7c4d] text-xs text-center mt-1">
+                    El indicador flotante te mostrará el progreso desde cualquier ventana
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -676,16 +676,19 @@ class ProcessingStore {
     onProgress?: (progress: number, balances: CurrencyBalance[]) => void
   ): Promise<void> {
     if (this.isProcessingActive) {
-      console.warn('[ProcessingStore] Ya hay un procesamiento activo');
+      console.warn('[ProcessingStore] ⚠️ Ya hay un procesamiento activo - Ignorando nueva solicitud');
       return;
     }
+
+    console.log('[ProcessingStore] 🚀 Iniciando procesamiento GLOBAL - Independiente de navegación');
 
     this.isProcessingActive = true;
     this.processingController = new AbortController();
     const signal = this.processingController.signal;
 
     try {
-      console.log('[ProcessingStore] Iniciando procesamiento global:', file.name);
+      console.log('[ProcessingStore] 📂 Archivo:', file.name, '| Tamaño:', (file.size / (1024*1024*1024)).toFixed(2), 'GB');
+      console.log('[ProcessingStore] ℹ️ El procesamiento continuará en segundo plano sin importar la navegación');
 
       const fileHash = await this.calculateFileHash(file);
 
@@ -767,7 +770,11 @@ class ProcessingStore {
       if (!signal.aborted) {
         const balancesArray = Object.values(balanceTracker);
         await this.completeProcessing(balancesArray);
-        console.log('[ProcessingStore] Procesamiento completado');
+        console.log('[ProcessingStore] ✅ Procesamiento completado al 100%');
+        console.log('[ProcessingStore] 📊 Total de monedas detectadas:', balancesArray.length);
+        console.log('[ProcessingStore] 💾 Datos guardados en Supabase y localStorage');
+      } else {
+        console.log('[ProcessingStore] ⚠️ Procesamiento detenido por el usuario');
       }
 
     } catch (error) {
