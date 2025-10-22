@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { transactionsStore, type FileAccount, type Transaction } from '../lib/transactions-store';
 import { formatCurrency } from '../lib/balances-store';
+import { ledgerAccountsStore, type LedgerAccount, SUPPORTED_CURRENCIES } from '../lib/ledger-accounts-store';
 import { useLanguage } from '../lib/i18n';
 
 interface DashboardStats {
@@ -35,6 +36,7 @@ interface CurrencyStats {
 export function AdvancedBankingDashboard() {
   const { t } = useLanguage();
   const [accounts, setAccounts] = useState<FileAccount[]>([]);
+  const [ledgerAccounts, setLedgerAccounts] = useState<LedgerAccount[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -49,13 +51,17 @@ export function AdvancedBankingDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const [loadedAccounts, loadedTransactions] = await Promise.all([
+      const [loadedAccounts, loadedLedgerAccounts, loadedTransactions] = await Promise.all([
         transactionsStore.getAvailableAccounts(true),
+        ledgerAccountsStore.initializeAllAccounts(),
         transactionsStore.getTransactionHistory(undefined, 100)
       ]);
 
       setAccounts(loadedAccounts);
+      setLedgerAccounts(loadedLedgerAccounts);
       setTransactions(loadedTransactions);
+
+      console.log('[Dashboard] Loaded:', loadedLedgerAccounts.length, 'ledger accounts');
     } catch (error) {
       console.error('[Dashboard] Error loading data:', error);
     } finally {
@@ -291,6 +297,55 @@ export function AdvancedBankingDashboard() {
                 <span className="text-sm font-bold text-yellow-500">${dashboardStats.totalFees.toFixed(2)}</span>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Ledger Accounts - 15 Divisas Ordenadas */}
+        <div className="bg-gradient-to-br from-[#0a0a0a] to-[#0d0d0d] border border-[#00ff88]/20 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <Database className="w-6 h-6 text-[#00ff88]" />
+            <h2 className="text-2xl font-bold text-[#e0ffe0]">Cuentas del Ledger (15 Divisas)</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
+            {ledgerAccounts.map((account, index) => {
+              const isMainCurrency = index < 4;
+              return (
+                <div
+                  key={account.currency}
+                  className={`${
+                    isMainCurrency
+                      ? 'bg-gradient-to-br from-[#00ff88]/20 to-[#00cc6a]/20 border-[#00ff88]/50'
+                      : 'bg-[#00ff88]/5 border-[#00ff88]/20'
+                  } border rounded-lg p-3 hover:bg-[#00ff88]/15 transition-all`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xl font-black ${isMainCurrency ? 'text-[#00ff88]' : 'text-[#e0ffe0]'}`}>
+                      {account.currency}
+                    </span>
+                    {isMainCurrency && (
+                      <span className="text-xs bg-[#00ff88] text-black px-2 py-0.5 rounded-full font-bold">★</span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-lg font-bold text-[#e0ffe0]">
+                      {balanceVisible ? formatCurrency(account.balance, account.currency) : '••••••'}
+                    </div>
+                    <div className="text-xs text-[#80ff80]">
+                      {account.transactionCount} tx
+                    </div>
+                    <div className={`text-xs font-semibold ${
+                      account.status === 'active' ? 'text-[#00ff88]' :
+                      account.status === 'frozen' ? 'text-yellow-500' :
+                      'text-red-400'
+                    }`}>
+                      {account.status.toUpperCase()}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

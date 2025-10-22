@@ -443,8 +443,23 @@ class ProcessingStore {
 
       await this.saveState(this.currentState);
       await this.saveBalancesToSupabase(balances, 100, 'completed');
+
+      await this.updateLedgerAccounts(balances);
     } catch (error) {
       console.error('[ProcessingStore] Error completing:', error);
+    }
+  }
+
+  private async updateLedgerAccounts(balances: CurrencyBalance[]): Promise<void> {
+    try {
+      const { ledgerAccountsStore } = await import('./ledger-accounts-store');
+
+      console.log('[ProcessingStore] Updating ledger accounts with new balances');
+      await ledgerAccountsStore.updateMultipleAccounts(balances);
+
+      console.log('[ProcessingStore] ✓ Ledger accounts updated successfully');
+    } catch (error) {
+      console.error('[ProcessingStore] Error updating ledger accounts:', error);
     }
   }
 
