@@ -66,8 +66,18 @@ export function LargeFileDTC1BAnalyzer() {
         });
         console.log('[LargeFileDTC1BAnalyzer] Proceso pendiente detectado:', pendingState.fileName, pendingState.progress + '%');
 
-        // Si hay balances en el estado pendiente, cargarlos automáticamente
-        if (pendingState.balances && pendingState.balances.length > 0) {
+        // Cargar balances desde Supabase si existe fileHash
+        let balancesToShow = pendingState.balances || [];
+        if (pendingState.fileHash) {
+          const supabaseBalances = await processingStore.loadBalancesFromSupabase(pendingState.fileHash);
+          if (supabaseBalances.length > 0) {
+            balancesToShow = supabaseBalances;
+            console.log('[LargeFileDTC1BAnalyzer] Balances cargados desde Supabase:', supabaseBalances.length);
+          }
+        }
+
+        // Mostrar balances recuperados
+        if (balancesToShow.length > 0) {
           setAnalysis({
             fileName: pendingState.fileName,
             fileSize: pendingState.fileSize,
@@ -76,13 +86,13 @@ export function LargeFileDTC1BAnalyzer() {
             magicNumber: '',
             entropy: 0,
             isEncrypted: false,
-            detectedAlgorithm: 'Recuperado desde estado guardado',
+            detectedAlgorithm: 'Recuperado desde la nube',
             ivBytes: '',
             saltBytes: '',
-            balances: pendingState.balances,
+            balances: balancesToShow,
             status: 'idle'
           });
-          setLoadedBalances(pendingState.balances);
+          setLoadedBalances(balancesToShow);
         }
       }
     };

@@ -394,6 +394,7 @@ class ProcessingStore {
       };
 
       await this.saveState(this.currentState);
+      await this.saveBalancesToSupabase(balances, progress);
     } catch (error) {
       console.error('[ProcessingStore] Error updating progress:', error);
     }
@@ -444,6 +445,7 @@ class ProcessingStore {
       };
 
       await this.saveState(this.currentState);
+      await this.saveBalancesToSupabase(balances, 100, 'completed');
     } catch (error) {
       console.error('[ProcessingStore] Error completing:', error);
     }
@@ -870,6 +872,106 @@ class ProcessingStore {
       'HKD': 'Cuenta en Dólares de Hong Kong'
     };
     return accountNames[currency] || `Cuenta en ${currency}`;
+  }
+
+  private async saveBalancesToSupabase(
+    balances: CurrencyBalance[],
+    progress: number,
+    status: 'processing' | 'completed' = 'processing'
+  ): Promise<void> {
+    if (!this.currentState || !this.currentState.fileHash) return;
+
+    const userId = await this.ensureUserId();
+    if (!userId) return;
+
+    try {
+      for (const balance of balances) {
+        const balanceData = {
+          user_id: userId,
+          file_hash: this.currentState.fileHash,
+          file_name: this.currentState.fileName,
+          file_size: this.currentState.fileSize,
+          currency: balance.currency,
+          account_name: balance.accountName,
+          total_amount: balance.totalAmount,
+          transaction_count: balance.transactionCount,
+          average_transaction: balance.averageTransaction,
+          largest_transaction: balance.largestTransaction,
+          smallest_transaction: balance.smallestTransaction,
+          amounts: balance.amounts,
+          last_updated: new Date().toISOString(),
+          status: status,
+          progress: progress
+        };
+
+        const { error } = await supabase
+          .from('currency_balances')
+          .upsert(balanceData, {
+            onConflict: 'user_id,file_hash,currency'
+          });
+
+        if (error) {
+          console.error('[ProcessingStore] Error saving balance:', error);
+        }
+      }
+
+      console.log(`[ProcessingStore] Balances saved to Supabase (${balances.length} currencies)`);
+    } catch (error) {
+      console.error('[ProcessingStore] Error in saveBalancesToSupabase:', error);
+    }
+  }
+
+  async loadBalancesFromSupabase(fileHash: string): Promise<CurrencyBalance[]> {
+    const userId = await this.ensureUserId();
+    if (!userId) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('currency_balances')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('file_hash', fileHash)
+        .order('total_amount', { ascending: false });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        console.log(`[ProcessingStore] Loaded ${data.length} balances from Supabase`);
+        return data.map(row => ({
+          currency: row.currency,
+          accountName: row.account_name,
+          totalAmount: parseFloat(row.total_amount),
+          transactionCount: row.transaction_count,
+          averageTransaction: parseFloat(row.average_transaction),
+          largestTransaction: parseFloat(row.largest_transaction),
+          smallestTransaction: parseFloat(row.smallest_transaction),
+          amounts: row.amounts || [],
+          lastUpdated: row.last_updated
+        }));
+      }
+    } catch (error) {
+      console.error('[ProcessingStore] Error loading balances:', error);
+    }
+
+    return [];
+  }
+
+  async deleteBalancesFromSupabase(fileHash: string): Promise<void> {
+    const userId = await this.ensureUserId();
+    if (!userId) return;
+
+    try {
+      const { error } = await supabase
+        .from('currency_balances')
+        .delete()
+        .eq('user_id', userId)
+        .eq('file_hash', fileHash);
+
+      if (error) throw error;
+      console.log('[ProcessingStore] Balances deleted from Supabase');
+    } catch (error) {
+      console.error('[ProcessingStore] Error deleting balances:', error);
+    }
   }
 }
 
