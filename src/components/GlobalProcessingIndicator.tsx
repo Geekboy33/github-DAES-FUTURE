@@ -1,17 +1,30 @@
 import { useState, useEffect } from 'react';
-import { Activity, Pause, Play, X, CheckCircle, AlertCircle, Database } from 'lucide-react';
+import { Activity, Pause, Play, X, CheckCircle, AlertCircle, Database, RotateCcw } from 'lucide-react';
 import { processingStore, ProcessingState } from '../lib/processing-store';
 
 export function GlobalProcessingIndicator() {
   const [processingState, setProcessingState] = useState<ProcessingState | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [showContinuePrompt, setShowContinuePrompt] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = processingStore.subscribe((state) => {
-      setProcessingState(state);
-    });
+    const loadAndSubscribe = async () => {
+      await processingStore.loadState();
+      const unsubscribe = processingStore.subscribe((state) => {
+        setProcessingState(state);
+        if (state && (state.status === 'paused' || state.progress < 100)) {
+          setShowContinuePrompt(true);
+        } else {
+          setShowContinuePrompt(false);
+        }
+      });
+      return unsubscribe;
+    };
 
-    return unsubscribe;
+    let cleanup: (() => void) | undefined;
+    loadAndSubscribe().then(unsub => { cleanup = unsub; });
+
+    return () => cleanup?.();
   }, []);
 
   if (!processingState || processingState.status === 'idle') {
@@ -111,7 +124,7 @@ export function GlobalProcessingIndicator() {
             </button>
             {processingState.status === 'completed' && (
               <button
-                onClick={() => processingStore.clearState()}
+                onClick={async () => await processingStore.clearState()}
                 className="text-white hover:bg-white/20 rounded p-1 transition-colors"
                 title="Cerrar"
               >
@@ -189,6 +202,20 @@ export function GlobalProcessingIndicator() {
             <div className="bg-red-900/20 border border-red-500/30 rounded p-2 text-xs text-red-300">
               {processingState.errorMessage}
             </div>
+          )}
+
+          {/* Botón para continuar proceso pausado */}
+          {showContinuePrompt && (processingState.status === 'paused' || processingState.progress < 100) && (
+            <button
+              onClick={() => {
+                window.location.href = '#large-file-analyzer';
+                window.dispatchEvent(new CustomEvent('navigate-to-analyzer'));
+              }}
+              className="w-full bg-gradient-to-r from-[#00ff88] to-[#00cc6a] hover:from-[#00cc6a] hover:to-[#00aa55] text-black px-4 py-2 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,255,136,0.3)]"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Ir al Analizador para Continuar
+            </button>
           )}
 
           {/* Mensaje de éxito */}

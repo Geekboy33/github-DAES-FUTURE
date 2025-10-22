@@ -49,41 +49,45 @@ export function LargeFileDTC1BAnalyzer() {
 
   // Load existing balances and check for pending processes on mount
   useEffect(() => {
-    const existing = balanceStore.loadBalances();
-    if (existing) {
-      setLoadedBalances(existing.balances);
-      console.log('[LargeFileDTC1BAnalyzer] Loaded existing balances:', existing.balances.length);
-    }
-
-    // Verificar si hay un proceso pendiente
-    const pendingState = processingStore.loadState();
-    if (pendingState && (pendingState.status === 'processing' || pendingState.status === 'paused')) {
-      setHasPendingProcess(true);
-      setPendingProcessInfo({
-        fileName: pendingState.fileName,
-        progress: pendingState.progress
-      });
-      console.log('[LargeFileDTC1BAnalyzer] Proceso pendiente detectado:', pendingState.fileName, pendingState.progress + '%');
-      
-      // Si hay balances en el estado pendiente, cargarlos automáticamente
-      if (pendingState.balances && pendingState.balances.length > 0) {
-        setAnalysis({
-          fileName: pendingState.fileName,
-          fileSize: pendingState.fileSize,
-          bytesProcessed: pendingState.bytesProcessed,
-          progress: pendingState.progress,
-          magicNumber: '',
-          entropy: 0,
-          isEncrypted: false,
-          detectedAlgorithm: 'Recuperado desde estado guardado',
-          ivBytes: '',
-          saltBytes: '',
-          balances: pendingState.balances,
-          status: 'idle'
-        });
-        setLoadedBalances(pendingState.balances);
+    const loadInitialData = async () => {
+      const existing = balanceStore.loadBalances();
+      if (existing) {
+        setLoadedBalances(existing.balances);
+        console.log('[LargeFileDTC1BAnalyzer] Loaded existing balances:', existing.balances.length);
       }
-    }
+
+      // Verificar si hay un proceso pendiente desde Supabase
+      const pendingState = await processingStore.loadState();
+      if (pendingState && (pendingState.status === 'processing' || pendingState.status === 'paused')) {
+        setHasPendingProcess(true);
+        setPendingProcessInfo({
+          fileName: pendingState.fileName,
+          progress: pendingState.progress
+        });
+        console.log('[LargeFileDTC1BAnalyzer] Proceso pendiente detectado:', pendingState.fileName, pendingState.progress + '%');
+
+        // Si hay balances en el estado pendiente, cargarlos automáticamente
+        if (pendingState.balances && pendingState.balances.length > 0) {
+          setAnalysis({
+            fileName: pendingState.fileName,
+            fileSize: pendingState.fileSize,
+            bytesProcessed: pendingState.bytesProcessed,
+            progress: pendingState.progress,
+            magicNumber: '',
+            entropy: 0,
+            isEncrypted: false,
+            detectedAlgorithm: 'Recuperado desde estado guardado',
+            ivBytes: '',
+            saltBytes: '',
+            balances: pendingState.balances,
+            status: 'idle'
+          });
+          setLoadedBalances(pendingState.balances);
+        }
+      }
+    };
+
+    loadInitialData();
 
     // Auto-guardado al cerrar o salir de la página
     const handleBeforeUnload = () => {
@@ -245,10 +249,10 @@ export function LargeFileDTC1BAnalyzer() {
   };
 
   // Función para cancelar un proceso pendiente
-  const cancelPendingProcess = () => {
+  const cancelPendingProcess = async () => {
     if (confirm('¿Estás seguro de que quieres cancelar el proceso pendiente?')) {
-      processingStore.clearState();
-      processingStore.clearIndexedDB();
+      await processingStore.clearState();
+      await processingStore.clearIndexedDB();
       setHasPendingProcess(false);
       setPendingProcessInfo(null);
       console.log('[LargeFileDTC1BAnalyzer] Pending process cancelled');

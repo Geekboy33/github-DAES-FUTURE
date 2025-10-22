@@ -1,4 +1,10 @@
 import { CurrencyBalance } from './balances-store';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 export interface ProcessingState {
   id: string;
@@ -22,27 +28,40 @@ class ProcessingStore {
   private currentState: ProcessingState | null = null;
   private isProcessingActive: boolean = false;
   private processingController: AbortController | null = null;
+  private currentUserId: string | null = null;
+  private currentDbId: string | null = null;
 
   constructor() {
     // Cargar estado al inicializar
     this.loadState();
+    this.initializeUser();
   }
 
-  // Guardar estado en localStorage
-  saveState(state: ProcessingState): void {
+  private async initializeUser(): Promise<void> {
+    const { data: { user } } = await supabase.auth.getUser();
+    this.currentUserId = user?.id || null;
+  }
+
+  // Guardar estado en localStorage Y Supabase
+  async saveState(state: ProcessingState): Promise<void> {
     this.currentState = state;
-    
+
     // No guardar fileData en localStorage por tamaño, solo metadata
     const stateToSave = {
       ...state,
       fileData: undefined // No persistir el buffer en localStorage
     };
-    
+
     try {
+      // Guardar en localStorage (respaldo local)
       localStorage.setItem(
         ProcessingStore.STORAGE_KEY,
         JSON.stringify(stateToSave)
       );
+
+      // Guardar en Supabase (persistencia remota)
+      await this.saveToSupabase(state);
+
       console.log('[ProcessingStore] Estado guardado:', state.progress + '%');
       this.notifyListeners();
     } catch (error) {
@@ -50,18 +69,130 @@ class ProcessingStore {
     }
   }
 
-  // Cargar estado desde localStorage
-  loadState(): ProcessingState | null {
+  // Guardar en Supabase
+  private async saveToSupabase(state: ProcessingState): Promise<void> {
+    if (!this.currentUserId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      this.currentUserId = user?.id || null;
+    }
+
+    if (!this.currentUserId) {
+      console.warn('[ProcessingStore] No hay usuario autenticado, solo se guarda localmente');
+      return;
+    }
+
+    const dataToSave = {
+      id: this.currentDbId || undefined,
+      user_id: this.currentUserId,
+      file_name: state.fileName,
+      file_size: state.fileSize,
+      bytes_processed: state.bytesProcessed,
+      progress: state.progress,
+      status: state.status,
+      start_time: state.startTime,
+      last_update_time: state.lastUpdateTime,
+      balances: state.balances,
+      chunk_index: state.chunkIndex,
+      total_chunks: state.totalChunks,
+      error_message: state.errorMessage
+    };
+
     try {
+      if (this.currentDbId) {
+        // Actualizar registro existente
+        const { error } = await supabase
+          .from('processing_state')
+          .update(dataToSave)
+          .eq('id', this.currentDbId);
+
+        if (error) throw error;
+      } else {
+        // Crear nuevo registro
+        const { data, error } = await supabase
+          .from('processing_state')
+          .insert([dataToSave])
+          .select()
+          .single();
+
+        if (error) throw error;
+        if (data) this.currentDbId = data.id;
+      }
+
+      console.log('[ProcessingStore] Estado guardado en Supabase');
+    } catch (error) {
+      console.error('[ProcessingStore] Error guardando en Supabase:', error);
+      // Continuar aunque falle Supabase, el localStorage es respaldo
+    }
+  }
+
+  // Cargar estado desde Supabase (prioridad) o localStorage (respaldo)
+  async loadState(): Promise<ProcessingState | null> {
+    try {
+      // Intentar cargar desde Supabase primero
+      const fromSupabase = await this.loadFromSupabase();
+      if (fromSupabase) {
+        this.currentState = fromSupabase;
+        console.log('[ProcessingStore] Estado cargado desde Supabase:', this.currentState?.progress + '%');
+        return this.currentState;
+      }
+
+      // Si no hay en Supabase, usar localStorage
       const saved = localStorage.getItem(ProcessingStore.STORAGE_KEY);
       if (saved) {
         this.currentState = JSON.parse(saved);
-        console.log('[ProcessingStore] Estado cargado:', this.currentState?.progress + '%');
+        console.log('[ProcessingStore] Estado cargado desde localStorage:', this.currentState?.progress + '%');
         return this.currentState;
       }
     } catch (error) {
       console.error('[ProcessingStore] Error cargando estado:', error);
     }
+    return null;
+  }
+
+  // Cargar desde Supabase
+  private async loadFromSupabase(): Promise<ProcessingState | null> {
+    if (!this.currentUserId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      this.currentUserId = user?.id || null;
+    }
+
+    if (!this.currentUserId) {
+      return null;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('processing_state')
+        .select('*')
+        .eq('user_id', this.currentUserId)
+        .in('status', ['processing', 'paused'])
+        .order('last_update_time', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        this.currentDbId = data.id;
+        return {
+          id: data.id,
+          fileName: data.file_name,
+          fileSize: data.file_size,
+          bytesProcessed: data.bytes_processed,
+          progress: parseFloat(data.progress),
+          status: data.status,
+          startTime: data.start_time,
+          lastUpdateTime: data.last_update_time,
+          balances: data.balances || [],
+          chunkIndex: data.chunk_index,
+          totalChunks: data.total_chunks,
+          errorMessage: data.error_message
+        };
+      }
+    } catch (error) {
+      console.error('[ProcessingStore] Error cargando desde Supabase:', error);
+    }
+
     return null;
   }
 
@@ -146,9 +277,25 @@ class ProcessingStore {
     this.saveState(this.currentState);
   }
 
-  // Limpiar estado
-  clearState(): void {
+  // Limpiar estado (local y remoto)
+  async clearState(): Promise<void> {
+    // Limpiar de Supabase
+    if (this.currentDbId && this.currentUserId) {
+      try {
+        await supabase
+          .from('processing_state')
+          .delete()
+          .eq('id', this.currentDbId)
+          .eq('user_id', this.currentUserId);
+        console.log('[ProcessingStore] Estado eliminado de Supabase');
+      } catch (error) {
+        console.error('[ProcessingStore] Error eliminando de Supabase:', error);
+      }
+    }
+
+    // Limpiar local
     this.currentState = null;
+    this.currentDbId = null;
     localStorage.removeItem(ProcessingStore.STORAGE_KEY);
     this.notifyListeners();
     console.log('[ProcessingStore] Estado limpiado');
