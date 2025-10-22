@@ -8,8 +8,8 @@ import { MobileMenu } from './components/ui/MobileMenu';
 import { GlobalProcessingIndicator } from './components/GlobalProcessingIndicator';
 import { processingStore } from './lib/processing-store';
 
-const AccountDashboard = lazy(() => import(/* webpackPrefetch: true */ './components/AccountDashboard').then(m => ({ default: m.AccountDashboard })));
-const DTC1BProcessor = lazy(() => import(/* webpackPrefetch: true */ './components/DTC1BProcessor').then(m => ({ default: m.DTC1BProcessor })));
+const AccountDashboard = lazy(() => import('./components/AccountDashboard').then(m => ({ default: m.AccountDashboard })));
+const DTC1BProcessor = lazy(() => import('./components/DTC1BProcessor').then(m => ({ default: m.DTC1BProcessor })));
 const TransferInterface = lazy(() => import('./components/TransferInterface').then(m => ({ default: m.TransferInterface })));
 const APIKeyManager = lazy(() => import('./components/APIKeyManager').then(m => ({ default: m.APIKeyManager })));
 const AuditLogViewer = lazy(() => import('./components/AuditLogViewer').then(m => ({ default: m.AuditLogViewer })));

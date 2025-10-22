@@ -9,37 +9,7 @@ export default defineConfig({
     port: 5173,
     strictPort: false,
   },
-  build: {
-    target: 'es2020',
-    minify: 'esbuild',
-    cssMinify: 'esbuild',
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'supabase': ['@supabase/supabase-js'],
-          'utils': ['crypto-js', 'axios', 'uuid'],
-          'icons': ['lucide-react'],
-        },
-        chunkFileNames: 'assets/[name]-[hash].js',
-        entryFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash].[ext]'
-      }
-    },
-    reportCompressedSize: false,
-    chunkSizeWarningLimit: 1000,
-    sourcemap: false,
-  },
   optimizeDeps: {
-    include: ['react', 'react-dom', '@supabase/supabase-js'],
-    exclude: [],
-    esbuildOptions: {
-      target: 'es2020'
-    }
+    exclude: ['lucide-react'],
   },
-  esbuild: {
-    logOverride: { 'this-is-undefined-in-esm': 'silent' },
-    legalComments: 'none',
-    treeShaking: true
-  }
 });
