@@ -745,7 +745,7 @@ class ProcessingStore {
         if (typeof requestIdleCallback !== 'undefined') {
           await new Promise<void>(resolve => requestIdleCallback(() => resolve()));
         } else {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise(resolve => setTimeout(resolve, 0));
         }
       }
 
