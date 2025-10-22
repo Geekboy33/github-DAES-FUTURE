@@ -52,17 +52,25 @@ export function AdvancedBankingDashboard() {
       setLedgerAccounts(updatedAccounts);
     });
 
+    const intervalId = setInterval(() => {
+      console.log('[Dashboard] Auto-refresh - polling for updates');
+      loadDashboardData(false);
+    }, 5000);
+
     return () => {
       unsubscribeLedger();
+      clearInterval(intervalId);
     };
   }, []);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const [loadedAccounts, loadedLedgerAccounts, loadedTransactions] = await Promise.all([
         transactionsStore.getAvailableAccounts(true),
-        ledgerAccountsStore.initializeAllAccounts(),
+        ledgerAccountsStore.getAllAccounts(true),
         transactionsStore.getTransactionHistory(undefined, 100)
       ]);
 
@@ -70,11 +78,18 @@ export function AdvancedBankingDashboard() {
       setLedgerAccounts(loadedLedgerAccounts);
       setTransactions(loadedTransactions);
 
-      console.log('[Dashboard] Loaded:', loadedLedgerAccounts.length, 'ledger accounts');
+      console.log('[Dashboard] Loaded:', {
+        accounts: loadedAccounts.length,
+        ledgerAccounts: loadedLedgerAccounts.length,
+        transactions: loadedTransactions.length,
+        totalBalance: loadedLedgerAccounts.reduce((sum, acc) => sum + acc.balance, 0)
+      });
     } catch (error) {
       console.error('[Dashboard] Error loading data:', error);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
