@@ -265,9 +265,25 @@ export function LargeFileDTC1BAnalyzer() {
       setIsProcessing(true);
       processingRef.current = true;
       currentFileRef.current = file;
+      setError(null);
 
-      // Usar procesamiento global en lugar de local
+      // Calcular hash y buscar proceso existente
       try {
+        const fileHash = await processingStore.calculateFileHash(file);
+        const existingProcess = await processingStore.findProcessingByFileHash(fileHash);
+
+        if (existingProcess) {
+          const resume = confirm(
+            `¡Archivo reconocido!\n\n` +
+            `Progreso guardado: ${existingProcess.progress.toFixed(2)}%\n` +
+            `¿Deseas continuar desde donde lo dejaste?`
+          );
+
+          if (!resume) {
+            await processingStore.clearState();
+          }
+        }
+
         await processingStore.startGlobalProcessing(file, 0, (progress, balances) => {
           // Callback de progreso para actualizar UI local
           setAnalysis(prev => prev ? {
@@ -308,14 +324,14 @@ export function LargeFileDTC1BAnalyzer() {
     }
   };
 
-  const handlePause = () => {
+  const handlePause = async () => {
     if (isPaused) {
       // Reanudar
-      processingStore.resumeProcessing();
+      await processingStore.resumeProcessing();
       setIsPaused(false);
     } else {
       // Pausar
-      processingStore.pauseProcessing();
+      await processingStore.pauseProcessing();
       setIsPaused(true);
     }
   };

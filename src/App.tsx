@@ -31,37 +31,39 @@ function App() {
 
   // Efecto para mantener procesamiento global activo al cambiar de módulo
   useEffect(() => {
+    let mounted = true;
+    let unsubscribe: (() => void) | undefined;
+
     const initializeProcessing = async () => {
       // Cargar estado desde Supabase
       const state = await processingStore.loadState();
+      if (!mounted) return;
+
       if (state && (state.status === 'processing' || state.status === 'paused')) {
         console.log('[App] Proceso pendiente detectado:', state.fileName, state.progress.toFixed(2) + '%');
       }
 
       // Suscribirse a cambios para logging
-      const unsubscribe = processingStore.subscribe((state) => {
+      unsubscribe = processingStore.subscribe((state) => {
         if (state && state.status === 'processing') {
           // El procesamiento continúa independientemente del módulo activo
         }
       });
-
-      // Manejar evento de navegación desde GlobalProcessingIndicator
-      const handleNavigateToAnalyzer = () => {
-        setActiveTab('large-file-analyzer');
-      };
-
-      window.addEventListener('navigate-to-analyzer', handleNavigateToAnalyzer);
-
-      return () => {
-        unsubscribe();
-        window.removeEventListener('navigate-to-analyzer', handleNavigateToAnalyzer);
-      };
     };
 
-    let cleanup: (() => void) | undefined;
-    initializeProcessing().then(fn => { cleanup = fn; });
+    // Manejar evento de navegación desde GlobalProcessingIndicator
+    const handleNavigateToAnalyzer = () => {
+      setActiveTab('large-file-analyzer');
+    };
 
-    return () => cleanup?.();
+    initializeProcessing();
+    window.addEventListener('navigate-to-analyzer', handleNavigateToAnalyzer);
+
+    return () => {
+      mounted = false;
+      unsubscribe?.();
+      window.removeEventListener('navigate-to-analyzer', handleNavigateToAnalyzer);
+    };
   }, []);
 
   // Mostrar login si no está autenticado

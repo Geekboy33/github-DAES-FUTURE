@@ -192,9 +192,33 @@ export function GlobalProcessingIndicator() {
             </div>
           </div>
 
-          {/* Tiempo */}
-          <div className="text-xs text-[#4d7c4d]">
-            Última actualización: {formatTime(processingState.lastUpdateTime)}
+          {/* Estado de sincronización */}
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[#4d7c4d]">Última actualización: {formatTime(processingState.lastUpdateTime)}</span>
+            {processingState.syncStatus === 'syncing' && (
+              <div className="flex items-center gap-1 text-yellow-400">
+                <Activity className="w-3 h-3 animate-spin" />
+                <span className="font-semibold">Sincronizando...</span>
+              </div>
+            )}
+            {processingState.syncStatus === 'synced' && processingState.lastSyncTime && (
+              <div className="flex items-center gap-1 text-green-400">
+                <CheckCircle className="w-3 h-3" />
+                <span className="font-semibold">Guardado en nube</span>
+              </div>
+            )}
+            {processingState.syncStatus === 'error' && (
+              <div className="flex items-center gap-1 text-red-400">
+                <AlertCircle className="w-3 h-3" />
+                <span className="font-semibold">Error sincronización</span>
+              </div>
+            )}
+            {processingState.syncStatus === 'local-only' && (
+              <div className="flex items-center gap-1 text-orange-400">
+                <AlertCircle className="w-3 h-3" />
+                <span className="font-semibold">Solo local</span>
+              </div>
+            )}
           </div>
 
           {/* Mensaje de error */}

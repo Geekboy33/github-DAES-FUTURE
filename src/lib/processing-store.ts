@@ -19,71 +19,193 @@ export interface ProcessingState {
   chunkIndex: number;
   totalChunks: number;
   errorMessage?: string;
-  fileData?: ArrayBuffer; // Guardar los datos del archivo para reanudar
+  fileData?: ArrayBuffer;
+  fileHash?: string;
+  fileLastModified?: number;
+  syncStatus: 'synced' | 'syncing' | 'error' | 'local-only';
+  lastSyncTime?: string;
+  retryCount: number;
 }
 
 class ProcessingStore {
   private static STORAGE_KEY = 'dtc1b_processing_state';
+  private static SAVE_INTERVAL_MS = 5000;
   private listeners: Array<(state: ProcessingState | null) => void> = [];
   private currentState: ProcessingState | null = null;
   private isProcessingActive: boolean = false;
   private processingController: AbortController | null = null;
   private currentUserId: string | null = null;
   private currentDbId: string | null = null;
+  private userIdPromise: Promise<string | null>;
+  private lastSaveTime: number = 0;
+  private pendingSave: ProcessingState | null = null;
+  private saveTimeoutId: NodeJS.Timeout | null = null;
+
+  private currencyPatterns: Map<string, Uint8Array> = new Map();
 
   constructor() {
-    // Cargar estado al inicializar
-    this.loadState();
-    this.initializeUser();
+    this.userIdPromise = this.initializeUser();
+    this.initializeCurrencyPatterns();
+    this.userIdPromise.then(() => this.loadState());
+
+    window.addEventListener('beforeunload', () => this.flushPendingSave());
   }
 
-  private async initializeUser(): Promise<void> {
-    const { data: { user } } = await supabase.auth.getUser();
-    this.currentUserId = user?.id || null;
+  private async initializeUser(): Promise<string | null> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      this.currentUserId = user?.id || null;
+      return this.currentUserId;
+    } catch (error) {
+      console.error('[ProcessingStore] Error getting user:', error);
+      return null;
+    }
   }
 
-  // Guardar estado en localStorage Y Supabase
+  private async ensureUserId(): Promise<string | null> {
+    if (this.currentUserId) return this.currentUserId;
+    return await this.userIdPromise;
+  }
+
+  private initializeCurrencyPatterns(): void {
+    const currencies = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'INR', 'MXN', 'BRL', 'RUB', 'KRW', 'SGD', 'HKD'];
+    const encoder = new TextEncoder();
+    currencies.forEach(currency => {
+      this.currencyPatterns.set(currency, encoder.encode(currency));
+    });
+  }
+
+  async calculateFileHash(file: File): Promise<string> {
+    try {
+      const chunkSize = 1024 * 1024;
+      const chunks: ArrayBuffer[] = [];
+
+      const start = file.slice(0, chunkSize);
+      chunks.push(await start.arrayBuffer());
+
+      if (file.size > chunkSize * 2) {
+        const middle = file.slice(Math.floor(file.size / 2), Math.floor(file.size / 2) + chunkSize);
+        chunks.push(await middle.arrayBuffer());
+      }
+
+      if (file.size > chunkSize) {
+        const end = file.slice(Math.max(0, file.size - chunkSize));
+        chunks.push(await end.arrayBuffer());
+      }
+
+      const combined = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0));
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(new Uint8Array(chunk), offset);
+        offset += chunk.byteLength;
+      }
+
+      const hashBuffer = await crypto.subtle.digest('SHA-256', combined);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      return `${hashHex}-${file.size}-${file.lastModified}`;
+    } catch (error) {
+      console.error('[ProcessingStore] Error calculating file hash:', error);
+      return `fallback-${file.name}-${file.size}-${file.lastModified}`;
+    }
+  }
+
   async saveState(state: ProcessingState): Promise<void> {
     this.currentState = state;
+    this.pendingSave = state;
 
-    // No guardar fileData en localStorage por tamaño, solo metadata
     const stateToSave = {
       ...state,
-      fileData: undefined // No persistir el buffer en localStorage
+      fileData: undefined
     };
 
     try {
-      // Guardar en localStorage (respaldo local)
-      localStorage.setItem(
-        ProcessingStore.STORAGE_KEY,
-        JSON.stringify(stateToSave)
-      );
-
-      // Guardar en Supabase (persistencia remota)
-      await this.saveToSupabase(state);
-
-      console.log('[ProcessingStore] Estado guardado:', state.progress + '%');
+      localStorage.setItem(ProcessingStore.STORAGE_KEY, JSON.stringify(stateToSave));
       this.notifyListeners();
+
+      const now = Date.now();
+      const timeSinceLastSave = now - this.lastSaveTime;
+
+      if (this.saveTimeoutId) {
+        clearTimeout(this.saveTimeoutId);
+      }
+
+      if (timeSinceLastSave >= ProcessingStore.SAVE_INTERVAL_MS ||
+          state.status === 'completed' ||
+          state.status === 'error') {
+        await this.saveToSupabaseWithRetry(state);
+        this.lastSaveTime = now;
+        this.pendingSave = null;
+      } else {
+        this.saveTimeoutId = setTimeout(async () => {
+          if (this.pendingSave) {
+            await this.saveToSupabaseWithRetry(this.pendingSave);
+            this.lastSaveTime = Date.now();
+            this.pendingSave = null;
+          }
+        }, ProcessingStore.SAVE_INTERVAL_MS - timeSinceLastSave);
+      }
     } catch (error) {
       console.error('[ProcessingStore] Error guardando estado:', error);
     }
   }
 
-  // Guardar en Supabase
-  private async saveToSupabase(state: ProcessingState): Promise<void> {
-    if (!this.currentUserId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      this.currentUserId = user?.id || null;
+  private async saveToSupabaseWithRetry(state: ProcessingState, maxRetries: number = 3): Promise<boolean> {
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.currentState = { ...state, syncStatus: 'syncing' };
+        this.notifyListeners();
+
+        await this.saveToSupabase(state);
+
+        this.currentState = {
+          ...state,
+          syncStatus: 'synced',
+          lastSyncTime: new Date().toISOString(),
+          retryCount: 0
+        };
+        this.notifyListeners();
+
+        return true;
+      } catch (error) {
+        lastError = error;
+        console.warn(`[ProcessingStore] Intento ${attempt}/${maxRetries} falló:`, error);
+
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+        }
+      }
     }
 
-    if (!this.currentUserId) {
-      console.warn('[ProcessingStore] No hay usuario autenticado, solo se guarda localmente');
+    console.error('[ProcessingStore] Todos los intentos fallaron:', lastError);
+
+    this.currentState = {
+      ...state,
+      syncStatus: 'error',
+      retryCount: (state.retryCount || 0) + 1
+    };
+    this.notifyListeners();
+
+    return false;
+  }
+
+  private async saveToSupabase(state: ProcessingState): Promise<void> {
+    const userId = await this.ensureUserId();
+    if (!userId) {
+      console.warn('[ProcessingStore] No hay usuario autenticado');
+      if (this.currentState) {
+        this.currentState.syncStatus = 'local-only';
+        this.notifyListeners();
+      }
       return;
     }
 
     const dataToSave = {
       id: this.currentDbId || undefined,
-      user_id: this.currentUserId,
+      user_id: userId,
       file_name: state.fileName,
       file_size: state.fileSize,
       bytes_processed: state.bytesProcessed,
@@ -94,41 +216,49 @@ class ProcessingStore {
       balances: state.balances,
       chunk_index: state.chunkIndex,
       total_chunks: state.totalChunks,
-      error_message: state.errorMessage
+      error_message: state.errorMessage,
+      file_hash: state.fileHash,
+      file_last_modified: state.fileLastModified,
+      sync_status: 'synced',
+      last_sync_time: new Date().toISOString(),
+      retry_count: 0
     };
 
-    try {
-      if (this.currentDbId) {
-        // Actualizar registro existente
-        const { error } = await supabase
-          .from('processing_state')
-          .update(dataToSave)
-          .eq('id', this.currentDbId);
+    if (this.currentDbId) {
+      const { error } = await supabase
+        .from('processing_state')
+        .update(dataToSave)
+        .eq('id', this.currentDbId);
 
-        if (error) throw error;
-      } else {
-        // Crear nuevo registro
-        const { data, error } = await supabase
-          .from('processing_state')
-          .insert([dataToSave])
-          .select()
-          .single();
+      if (error) throw error;
+    } else {
+      const { data, error } = await supabase
+        .from('processing_state')
+        .insert([dataToSave])
+        .select()
+        .single();
 
-        if (error) throw error;
-        if (data) this.currentDbId = data.id;
-      }
+      if (error) throw error;
+      if (data) this.currentDbId = data.id;
+    }
 
-      console.log('[ProcessingStore] Estado guardado en Supabase');
-    } catch (error) {
-      console.error('[ProcessingStore] Error guardando en Supabase:', error);
-      // Continuar aunque falle Supabase, el localStorage es respaldo
+    console.log('[ProcessingStore] Estado guardado en Supabase');
+  }
+
+  async flushPendingSave(): Promise<void> {
+    if (this.saveTimeoutId) {
+      clearTimeout(this.saveTimeoutId);
+      this.saveTimeoutId = null;
+    }
+
+    if (this.pendingSave) {
+      await this.saveToSupabaseWithRetry(this.pendingSave);
+      this.pendingSave = null;
     }
   }
 
-  // Cargar estado desde Supabase (prioridad) o localStorage (respaldo)
   async loadState(): Promise<ProcessingState | null> {
     try {
-      // Intentar cargar desde Supabase primero
       const fromSupabase = await this.loadFromSupabase();
       if (fromSupabase) {
         this.currentState = fromSupabase;
@@ -136,7 +266,6 @@ class ProcessingStore {
         return this.currentState;
       }
 
-      // Si no hay en Supabase, usar localStorage
       const saved = localStorage.getItem(ProcessingStore.STORAGE_KEY);
       if (saved) {
         this.currentState = JSON.parse(saved);
@@ -145,26 +274,20 @@ class ProcessingStore {
       }
     } catch (error) {
       console.error('[ProcessingStore] Error cargando estado:', error);
+      await this.clearState();
     }
     return null;
   }
 
-  // Cargar desde Supabase
   private async loadFromSupabase(): Promise<ProcessingState | null> {
-    if (!this.currentUserId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      this.currentUserId = user?.id || null;
-    }
-
-    if (!this.currentUserId) {
-      return null;
-    }
+    const userId = await this.ensureUserId();
+    if (!userId) return null;
 
     try {
       const { data, error } = await supabase
         .from('processing_state')
         .select('*')
-        .eq('user_id', this.currentUserId)
+        .eq('user_id', userId)
         .in('status', ['processing', 'paused'])
         .order('last_update_time', { ascending: false })
         .limit(1)
@@ -186,7 +309,12 @@ class ProcessingStore {
           balances: data.balances || [],
           chunkIndex: data.chunk_index,
           totalChunks: data.total_chunks,
-          errorMessage: data.error_message
+          errorMessage: data.error_message,
+          fileHash: data.file_hash,
+          fileLastModified: data.file_last_modified,
+          syncStatus: data.sync_status || 'synced',
+          lastSyncTime: data.last_sync_time,
+          retryCount: data.retry_count || 0
         };
       }
     } catch (error) {
@@ -196,90 +324,151 @@ class ProcessingStore {
     return null;
   }
 
-  // Obtener estado actual
+  async findProcessingByFileHash(fileHash: string): Promise<ProcessingState | null> {
+    const userId = await this.ensureUserId();
+    if (!userId) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('processing_state')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('file_hash', fileHash)
+        .in('status', ['processing', 'paused'])
+        .order('last_update_time', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        this.currentDbId = data.id;
+        console.log('[ProcessingStore] Archivo reconocido! Progreso:', data.progress + '%');
+        return {
+          id: data.id,
+          fileName: data.file_name,
+          fileSize: data.file_size,
+          bytesProcessed: data.bytes_processed,
+          progress: parseFloat(data.progress),
+          status: data.status,
+          startTime: data.start_time,
+          lastUpdateTime: data.last_update_time,
+          balances: data.balances || [],
+          chunkIndex: data.chunk_index,
+          totalChunks: data.total_chunks,
+          errorMessage: data.error_message,
+          fileHash: data.file_hash,
+          fileLastModified: data.file_last_modified,
+          syncStatus: data.sync_status || 'synced',
+          lastSyncTime: data.last_sync_time,
+          retryCount: data.retry_count || 0
+        };
+      }
+    } catch (error) {
+      console.error('[ProcessingStore] Error buscando por hash:', error);
+    }
+
+    return null;
+  }
+
   getState(): ProcessingState | null {
     return this.currentState;
   }
 
-  // Actualizar progreso
-  updateProgress(
+  async updateProgress(
     bytesProcessed: number,
     progress: number,
     balances: CurrencyBalance[],
     chunkIndex: number
-  ): void {
+  ): Promise<void> {
     if (!this.currentState) return;
 
-    this.currentState = {
-      ...this.currentState,
-      bytesProcessed,
-      progress,
-      balances,
-      chunkIndex,
-      lastUpdateTime: new Date().toISOString(),
-    };
+    try {
+      this.currentState = {
+        ...this.currentState,
+        bytesProcessed,
+        progress,
+        balances,
+        chunkIndex,
+        lastUpdateTime: new Date().toISOString(),
+      };
 
-    this.saveState(this.currentState);
+      await this.saveState(this.currentState);
+    } catch (error) {
+      console.error('[ProcessingStore] Error updating progress:', error);
+    }
   }
 
-  // Pausar procesamiento
-  pauseProcessing(): void {
+  async pauseProcessing(): Promise<void> {
     if (!this.currentState) return;
 
-    this.currentState = {
-      ...this.currentState,
-      status: 'paused',
-      lastUpdateTime: new Date().toISOString(),
-    };
+    try {
+      this.currentState = {
+        ...this.currentState,
+        status: 'paused',
+        lastUpdateTime: new Date().toISOString(),
+      };
 
-    this.saveState(this.currentState);
+      await this.saveState(this.currentState);
+    } catch (error) {
+      console.error('[ProcessingStore] Error pausing:', error);
+    }
   }
 
-  // Reanudar procesamiento
-  resumeProcessing(): void {
+  async resumeProcessing(): Promise<void> {
     if (!this.currentState) return;
 
-    this.currentState = {
-      ...this.currentState,
-      status: 'processing',
-      lastUpdateTime: new Date().toISOString(),
-    };
+    try {
+      this.currentState = {
+        ...this.currentState,
+        status: 'processing',
+        lastUpdateTime: new Date().toISOString(),
+      };
 
-    this.saveState(this.currentState);
+      await this.saveState(this.currentState);
+    } catch (error) {
+      console.error('[ProcessingStore] Error resuming:', error);
+    }
   }
 
-  // Completar procesamiento
-  completeProcessing(balances: CurrencyBalance[]): void {
+  async completeProcessing(balances: CurrencyBalance[]): Promise<void> {
     if (!this.currentState) return;
 
-    this.currentState = {
-      ...this.currentState,
-      status: 'completed',
-      progress: 100,
-      balances,
-      lastUpdateTime: new Date().toISOString(),
-    };
+    try {
+      this.currentState = {
+        ...this.currentState,
+        status: 'completed',
+        progress: 100,
+        balances,
+        lastUpdateTime: new Date().toISOString(),
+      };
 
-    this.saveState(this.currentState);
+      await this.saveState(this.currentState);
+    } catch (error) {
+      console.error('[ProcessingStore] Error completing:', error);
+    }
   }
 
-  // Marcar como error
-  setError(errorMessage: string): void {
+  async setError(errorMessage: string): Promise<void> {
     if (!this.currentState) return;
 
-    this.currentState = {
-      ...this.currentState,
-      status: 'error',
-      errorMessage,
-      lastUpdateTime: new Date().toISOString(),
-    };
+    try {
+      this.currentState = {
+        ...this.currentState,
+        status: 'error',
+        errorMessage,
+        lastUpdateTime: new Date().toISOString(),
+      };
 
-    this.saveState(this.currentState);
+      await this.saveState(this.currentState);
+    } catch (error) {
+      console.error('[ProcessingStore] Error setting error state:', error);
+    }
   }
 
-  // Limpiar estado (local y remoto)
   async clearState(): Promise<void> {
-    // Limpiar de Supabase
+    await this.flushPendingSave();
+
     if (this.currentDbId && this.currentUserId) {
       try {
         await supabase
@@ -293,7 +482,6 @@ class ProcessingStore {
       }
     }
 
-    // Limpiar local
     this.currentState = null;
     this.currentDbId = null;
     localStorage.removeItem(ProcessingStore.STORAGE_KEY);
@@ -301,10 +489,9 @@ class ProcessingStore {
     console.log('[ProcessingStore] Estado limpiado');
   }
 
-  // Iniciar nuevo procesamiento
-  startProcessing(fileName: string, fileSize: number, fileData: ArrayBuffer): string {
+  startProcessing(fileName: string, fileSize: number, fileData: ArrayBuffer, fileHash: string, fileLastModified: number): string {
     const id = `process_${Date.now()}`;
-    const totalChunks = Math.ceil(fileSize / (10 * 1024 * 1024)); // Chunks de 10MB
+    const totalChunks = Math.ceil(fileSize / (10 * 1024 * 1024));
 
     this.currentState = {
       id,
@@ -318,60 +505,75 @@ class ProcessingStore {
       balances: [],
       chunkIndex: 0,
       totalChunks,
-      fileData, // Mantener en memoria mientras procesa
+      fileData,
+      fileHash,
+      fileLastModified,
+      syncStatus: 'syncing',
+      retryCount: 0
     };
 
     this.saveState(this.currentState);
     return id;
   }
 
-  // Verificar si hay un proceso en curso
   hasActiveProcessing(): boolean {
-    return this.currentState !== null && 
+    return this.currentState !== null &&
            (this.currentState.status === 'processing' || this.currentState.status === 'paused');
   }
 
-  // Suscribirse a cambios
   subscribe(listener: (state: ProcessingState | null) => void): () => void {
     this.listeners.push(listener);
-    // Notificar inmediatamente con el estado actual
     listener(this.currentState);
-    
-    // Retornar función para desuscribirse
+
     return () => {
       this.listeners = this.listeners.filter(l => l !== listener);
     };
   }
 
-  // Notificar a todos los listeners
   private notifyListeners(): void {
-    this.listeners.forEach(listener => listener(this.currentState));
+    this.listeners.forEach(listener => {
+      try {
+        listener(this.currentState);
+      } catch (error) {
+        console.error('[ProcessingStore] Error in listener:', error);
+      }
+    });
   }
 
-  // Guardar snapshot de fileData en IndexedDB para archivos muy grandes
-  async saveFileDataToIndexedDB(fileData: ArrayBuffer): Promise<void> {
-    return new Promise((resolve, reject) => {
+  async saveFileDataToIndexedDB(fileData: ArrayBuffer): Promise<boolean> {
+    return new Promise((resolve) => {
       const request = indexedDB.open('DTC1BProcessing', 1);
 
-      request.onerror = () => reject(request.error);
-      
+      request.onerror = () => {
+        console.error('[ProcessingStore] IndexedDB error:', request.error);
+        resolve(false);
+      };
+
       request.onsuccess = () => {
         const db = request.result;
         const transaction = db.transaction(['fileData'], 'readwrite');
         const store = transaction.objectStore('fileData');
-        
-        store.put({
+
+        const putRequest = store.put({
           id: 'current',
           data: fileData,
           timestamp: Date.now()
         });
 
+        putRequest.onerror = () => {
+          if (putRequest.error?.name === 'QuotaExceededError') {
+            console.warn('[ProcessingStore] Espacio insuficiente en IndexedDB');
+            this.clearIndexedDB().then(() => {
+              console.log('[ProcessingStore] IndexedDB limpiado');
+            });
+          }
+          resolve(false);
+        };
+
         transaction.oncomplete = () => {
           console.log('[ProcessingStore] FileData guardado en IndexedDB');
-          resolve();
+          resolve(true);
         };
-        
-        transaction.onerror = () => reject(transaction.error);
       };
 
       request.onupgradeneeded = (event) => {
@@ -383,13 +585,12 @@ class ProcessingStore {
     });
   }
 
-  // Cargar fileData desde IndexedDB
   async loadFileDataFromIndexedDB(): Promise<ArrayBuffer | null> {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open('DTC1BProcessing', 1);
 
       request.onerror = () => reject(request.error);
-      
+
       request.onsuccess = () => {
         const db = request.result;
         const transaction = db.transaction(['fileData'], 'readonly');
@@ -418,7 +619,6 @@ class ProcessingStore {
     });
   }
 
-  // Limpiar IndexedDB
   async clearIndexedDB(): Promise<void> {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open('DTC1BProcessing', 1);
@@ -441,12 +641,10 @@ class ProcessingStore {
     });
   }
 
-  // Verificar si hay procesamiento activo
   isProcessing(): boolean {
     return this.isProcessingActive;
   }
 
-  // Detener procesamiento
   stopProcessing(): void {
     if (this.processingController) {
       this.processingController.abort();
@@ -458,7 +656,6 @@ class ProcessingStore {
     }
   }
 
-  // Método para iniciar procesamiento global
   async startGlobalProcessing(
     file: File,
     resumeFrom: number = 0,
@@ -475,13 +672,29 @@ class ProcessingStore {
 
     try {
       console.log('[ProcessingStore] Iniciando procesamiento global:', file.name);
-      
-      const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
+
+      const fileHash = await this.calculateFileHash(file);
+
+      const existingProcess = await this.findProcessingByFileHash(fileHash);
+      if (existingProcess && resumeFrom === 0) {
+        resumeFrom = existingProcess.bytesProcessed;
+        console.log(`[ProcessingStore] 🎯 Archivo reconocido! Reanudando desde ${existingProcess.progress.toFixed(2)}%`);
+
+        this.currentState = existingProcess;
+        this.notifyListeners();
+      }
+
+      const CHUNK_SIZE = 10 * 1024 * 1024;
       const totalSize = file.size;
       let bytesProcessed = resumeFrom;
       const balanceTracker: { [currency: string]: CurrencyBalance } = {};
 
-      // Guardar archivo en IndexedDB si es < 2GB
+      if (existingProcess && existingProcess.balances) {
+        existingProcess.balances.forEach(balance => {
+          balanceTracker[balance.currency] = balance;
+        });
+      }
+
       if (totalSize < 2 * 1024 * 1024 * 1024 && resumeFrom === 0) {
         try {
           const buffer = await file.arrayBuffer();
@@ -491,17 +704,13 @@ class ProcessingStore {
         }
       }
 
-      // Iniciar en el store
-      const processId = this.startProcessing(file.name, totalSize, new ArrayBuffer(0));
+      const processId = this.startProcessing(file.name, totalSize, new ArrayBuffer(0), fileHash, file.lastModified);
       const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
       let currentChunk = Math.floor(resumeFrom / CHUNK_SIZE);
 
-      // Procesar por chunks
       let offset = resumeFrom;
-      let updateCounter = 0;
 
       while (offset < totalSize && !signal.aborted) {
-        // Verificar si está pausado
         while (this.currentState?.status === 'paused' && !signal.aborted) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
@@ -513,8 +722,7 @@ class ProcessingStore {
         const buffer = await blob.arrayBuffer();
         const chunk = new Uint8Array(buffer);
 
-        // Extraer balances (lógica simplificada)
-        this.extractCurrencyBalances(chunk, offset, balanceTracker);
+        this.extractCurrencyBalancesOptimized(chunk, offset, balanceTracker);
 
         bytesProcessed += chunk.length;
         offset = chunkEnd;
@@ -529,15 +737,12 @@ class ProcessingStore {
           return b.totalAmount - a.totalAmount;
         });
 
-        // Actualizar estado
-        this.updateProgress(bytesProcessed, progress, balancesArray, currentChunk);
+        await this.updateProgress(bytesProcessed, progress, balancesArray, currentChunk);
 
-        // Callback de progreso
         if (onProgress) {
           onProgress(progress, balancesArray);
         }
 
-        // Pausa breve
         if (typeof requestIdleCallback !== 'undefined') {
           await new Promise<void>(resolve => requestIdleCallback(() => resolve()));
         } else {
@@ -545,96 +750,127 @@ class ProcessingStore {
         }
       }
 
-      // Completar
       if (!signal.aborted) {
         const balancesArray = Object.values(balanceTracker);
-        this.completeProcessing(balancesArray);
+        await this.completeProcessing(balancesArray);
         console.log('[ProcessingStore] Procesamiento completado');
       }
 
     } catch (error) {
       console.error('[ProcessingStore] Error en procesamiento:', error);
-      this.setError(error instanceof Error ? error.message : 'Error desconocido');
+      await this.setError(error instanceof Error ? error.message : 'Error desconocido');
     } finally {
       this.isProcessingActive = false;
       this.processingController = null;
+      await this.flushPendingSave();
     }
   }
 
-  // Extraer balances de monedas
-  private extractCurrencyBalances(
+  private extractCurrencyBalancesOptimized(
     data: Uint8Array,
     offset: number,
     currentBalances: { [currency: string]: CurrencyBalance }
   ): void {
-    const currencies = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'INR', 'MXN', 'BRL', 'RUB', 'KRW', 'SGD', 'HKD'];
-    
-    currencies.forEach(currency => {
-      const currencyBytes = new TextEncoder().encode(currency);
-      
-      for (let i = 0; i <= data.length - currencyBytes.length - 8; i++) {
-        let match = true;
-        for (let j = 0; j < currencyBytes.length; j++) {
-          if (data[i + j] !== currencyBytes[j]) {
-            match = false;
+    const dataLength = data.length;
+
+    for (let i = 0; i < dataLength - 11; i++) {
+      for (const [currency, pattern] of this.currencyPatterns) {
+        if (this.matchesPattern(data, i, pattern)) {
+          const amount = this.extractAmount(data, i + pattern.length);
+
+          if (amount > 0) {
+            this.addToBalance(currentBalances, currency, amount);
+            i += pattern.length + 8;
             break;
           }
         }
-        
-        if (match) {
-          let amount = 0;
-          
-          try {
-            if (i + currencyBytes.length + 4 <= data.length) {
-              const view = new DataView(data.buffer, data.byteOffset + i + currencyBytes.length, 4);
-              const potentialAmount = view.getUint32(0, true);
-              
-              if (potentialAmount > 0 && potentialAmount < 100000000000) {
-                amount = potentialAmount / 100;
-              }
-            }
-            
-            if (amount === 0 && i + currencyBytes.length + 8 <= data.length) {
-              const view = new DataView(data.buffer, data.byteOffset + i + currencyBytes.length, 8);
-              const potentialDouble = view.getFloat64(0, true);
-              
-              if (potentialDouble > 0 && potentialDouble < 1000000000 && !isNaN(potentialDouble)) {
-                amount = potentialDouble;
-              }
-            }
-            
-            if (amount > 0) {
-              if (!currentBalances[currency]) {
-                currentBalances[currency] = {
-                  currency,
-                  totalAmount: 0,
-                  transactionCount: 0,
-                  averageTransaction: 0,
-                  lastUpdated: new Date().toISOString(),
-                  accountName: `Cuenta en ${currency}`,
-                  amounts: [],
-                  largestTransaction: 0,
-                  smallestTransaction: Infinity,
-                };
-              }
-              
-              const balance = currentBalances[currency];
-              balance.totalAmount += amount;
-              balance.transactionCount++;
-              balance.amounts.push(amount);
-              balance.averageTransaction = balance.totalAmount / balance.transactionCount;
-              balance.largestTransaction = Math.max(balance.largestTransaction, amount);
-              balance.smallestTransaction = Math.min(balance.smallestTransaction, amount);
-              balance.lastUpdated = new Date().toISOString();
-            }
-          } catch (error) {
-            // Ignorar errores de parsing
-          }
+      }
+    }
+  }
+
+  private matchesPattern(data: Uint8Array, offset: number, pattern: Uint8Array): boolean {
+    if (offset + pattern.length > data.length) return false;
+
+    for (let i = 0; i < pattern.length; i++) {
+      if (data[offset + i] !== pattern[i]) return false;
+    }
+    return true;
+  }
+
+  private extractAmount(data: Uint8Array, offset: number): number {
+    try {
+      if (offset + 4 <= data.length) {
+        const view = new DataView(data.buffer, data.byteOffset + offset, 4);
+        const potentialAmount = view.getUint32(0, true);
+
+        if (potentialAmount > 0 && potentialAmount < 100000000000) {
+          return potentialAmount / 100;
         }
       }
-    });
+
+      if (offset + 8 <= data.length) {
+        const view = new DataView(data.buffer, data.byteOffset + offset, 8);
+        const potentialDouble = view.getFloat64(0, true);
+
+        if (potentialDouble > 0 && potentialDouble < 1000000000 && !isNaN(potentialDouble)) {
+          return potentialDouble;
+        }
+      }
+    } catch (error) {
+    }
+
+    return 0;
+  }
+
+  private addToBalance(
+    currentBalances: { [currency: string]: CurrencyBalance },
+    currency: string,
+    amount: number
+  ): void {
+    if (!currentBalances[currency]) {
+      currentBalances[currency] = {
+        currency,
+        totalAmount: 0,
+        transactionCount: 0,
+        averageTransaction: 0,
+        lastUpdated: new Date().toISOString(),
+        accountName: this.getCurrencyAccountName(currency),
+        amounts: [],
+        largestTransaction: 0,
+        smallestTransaction: Infinity,
+      };
+    }
+
+    const balance = currentBalances[currency];
+    balance.totalAmount += amount;
+    balance.transactionCount++;
+    balance.amounts.push(amount);
+    balance.averageTransaction = balance.totalAmount / balance.transactionCount;
+    balance.largestTransaction = Math.max(balance.largestTransaction, amount);
+    balance.smallestTransaction = Math.min(balance.smallestTransaction, amount);
+    balance.lastUpdated = new Date().toISOString();
+  }
+
+  private getCurrencyAccountName(currency: string): string {
+    const accountNames: { [key: string]: string } = {
+      'USD': 'Cuenta en Dólares Estadounidenses',
+      'EUR': 'Cuenta en Euros',
+      'GBP': 'Cuenta en Libras Esterlinas',
+      'CAD': 'Cuenta en Dólares Canadienses',
+      'AUD': 'Cuenta en Dólares Australianos',
+      'JPY': 'Cuenta en Yenes Japoneses',
+      'CHF': 'Cuenta en Francos Suizos',
+      'CNY': 'Cuenta en Yuan Chino',
+      'INR': 'Cuenta en Rupias Indias',
+      'MXN': 'Cuenta en Pesos Mexicanos',
+      'BRL': 'Cuenta en Reales Brasileños',
+      'RUB': 'Cuenta en Rublos Rusos',
+      'KRW': 'Cuenta en Won Surcoreano',
+      'SGD': 'Cuenta en Dólares de Singapur',
+      'HKD': 'Cuenta en Dólares de Hong Kong'
+    };
+    return accountNames[currency] || `Cuenta en ${currency}`;
   }
 }
 
 export const processingStore = new ProcessingStore();
-
