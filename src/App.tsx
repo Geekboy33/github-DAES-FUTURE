@@ -1,25 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { LayoutDashboard, FileText, Send, Key, Shield, Wallet, Binary, Eye, Database, Building2, BookOpen, LogOut, FileCheck, Menu } from 'lucide-react';
 import { LanguageSelector } from './components/LanguageSelector';
 import { Login } from './components/Login';
 import { useLanguage } from './lib/i18n.tsx';
 import { useAuth } from './lib/auth.tsx';
 import { MobileMenu } from './components/ui/MobileMenu';
-
-// Direct imports (not lazy) to avoid issues
-import { AccountDashboard } from './components/AccountDashboard';
-import { DTC1BProcessor } from './components/DTC1BProcessor';
-import { TransferInterface } from './components/TransferInterface';
-import { APIKeyManager } from './components/APIKeyManager';
-import { AuditLogViewer } from './components/AuditLogViewer';
-import { AdvancedBinaryReader } from './components/AdvancedBinaryReader';
-import { EnhancedBinaryViewer } from './components/EnhancedBinaryViewer';
-import { LargeFileDTC1BAnalyzer } from './components/LargeFileDTC1BAnalyzer';
-import { XcpB2BInterface } from './components/XcpB2BInterface';
-import { AccountLedger } from './components/AccountLedger';
-import { BankBlackScreen } from './components/BankBlackScreen';
 import { GlobalProcessingIndicator } from './components/GlobalProcessingIndicator';
 import { processingStore } from './lib/processing-store';
+
+const AccountDashboard = lazy(() => import('./components/AccountDashboard').then(m => ({ default: m.AccountDashboard })));
+const DTC1BProcessor = lazy(() => import('./components/DTC1BProcessor').then(m => ({ default: m.DTC1BProcessor })));
+const TransferInterface = lazy(() => import('./components/TransferInterface').then(m => ({ default: m.TransferInterface })));
+const APIKeyManager = lazy(() => import('./components/APIKeyManager').then(m => ({ default: m.APIKeyManager })));
+const AuditLogViewer = lazy(() => import('./components/AuditLogViewer').then(m => ({ default: m.AuditLogViewer })));
+const AdvancedBinaryReader = lazy(() => import('./components/AdvancedBinaryReader').then(m => ({ default: m.AdvancedBinaryReader })));
+const EnhancedBinaryViewer = lazy(() => import('./components/EnhancedBinaryViewer').then(m => ({ default: m.EnhancedBinaryViewer })));
+const LargeFileDTC1BAnalyzer = lazy(() => import('./components/LargeFileDTC1BAnalyzer').then(m => ({ default: m.LargeFileDTC1BAnalyzer })));
+const XcpB2BInterface = lazy(() => import('./components/XcpB2BInterface').then(m => ({ default: m.XcpB2BInterface })));
+const AccountLedger = lazy(() => import('./components/AccountLedger').then(m => ({ default: m.AccountLedger })));
+const BankBlackScreen = lazy(() => import('./components/BankBlackScreen').then(m => ({ default: m.BankBlackScreen })));
 
 type Tab = 'dashboard' | 'processor' | 'transfer' | 'api-keys' | 'audit' | 'binary-reader' | 'hex-viewer' | 'large-file-analyzer' | 'xcp-b2b' | 'ledger' | 'blackscreen';
 
@@ -167,17 +166,26 @@ function App() {
       </header>
 
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'dashboard' && <AccountDashboard />}
-        {activeTab === 'ledger' && <AccountLedger />}
-        {activeTab === 'blackscreen' && <BankBlackScreen />}
-        {activeTab === 'xcp-b2b' && <XcpB2BInterface />}
-        {activeTab === 'processor' && <DTC1BProcessor />}
-        {activeTab === 'binary-reader' && <AdvancedBinaryReader />}
-        {activeTab === 'hex-viewer' && <EnhancedBinaryViewer />}
-        {activeTab === 'large-file-analyzer' && <LargeFileDTC1BAnalyzer />}
-        {activeTab === 'transfer' && <TransferInterface />}
-        {activeTab === 'api-keys' && <APIKeyManager />}
-        {activeTab === 'audit' && <AuditLogViewer />}
+        <Suspense fallback={
+          <div className="h-full flex items-center justify-center bg-black">
+            <div className="text-center">
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#00ff88] mb-4"></div>
+              <p className="text-[#00ff88] text-lg font-semibold">Cargando módulo...</p>
+            </div>
+          </div>
+        }>
+          {activeTab === 'dashboard' && <AccountDashboard />}
+          {activeTab === 'ledger' && <AccountLedger />}
+          {activeTab === 'blackscreen' && <BankBlackScreen />}
+          {activeTab === 'xcp-b2b' && <XcpB2BInterface />}
+          {activeTab === 'processor' && <DTC1BProcessor />}
+          {activeTab === 'binary-reader' && <AdvancedBinaryReader />}
+          {activeTab === 'hex-viewer' && <EnhancedBinaryViewer />}
+          {activeTab === 'large-file-analyzer' && <LargeFileDTC1BAnalyzer />}
+          {activeTab === 'transfer' && <TransferInterface />}
+          {activeTab === 'api-keys' && <APIKeyManager />}
+          {activeTab === 'audit' && <AuditLogViewer />}
+        </Suspense>
       </main>
 
       <footer className="bg-black border-t border-[#1a1a1a] px-6 py-3 shadow-[0_-2px_20px_rgba(0,255,136,0.1)]">

@@ -1,10 +1,7 @@
 import { CurrencyBalance } from './balances-store';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseClient } from './supabase-client';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+const supabase = getSupabaseClient();
 
 export interface ProcessingState {
   id: string;

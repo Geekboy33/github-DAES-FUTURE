@@ -1,10 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseClient } from './supabase-client';
 import { CurrencyBalance } from './balances-store';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+const supabase = getSupabaseClient();
 
 export interface Transaction {
   id: string;
@@ -41,6 +38,12 @@ export interface FileAccount {
 class TransactionsStore {
   private currentUserId: string | null = null;
   private userIdPromise: Promise<string | null>;
+  private accountsCache: {
+    data: FileAccount[] | null;
+    timestamp: number;
+  } = { data: null, timestamp: 0 };
+  private balanceCache: Map<string, { balance: number; timestamp: number }> = new Map();
+  private readonly CACHE_TTL = 60000;
 
   constructor() {
     this.userIdPromise = this.initializeUser();
@@ -62,14 +65,22 @@ class TransactionsStore {
     return await this.userIdPromise;
   }
 
-  async getAvailableAccounts(): Promise<FileAccount[]> {
+  async getAvailableAccounts(forceRefresh = false): Promise<FileAccount[]> {
     const userId = await this.ensureUserId();
     if (!userId) return [];
+
+    const now = Date.now();
+    const cacheAge = now - this.accountsCache.timestamp;
+
+    if (!forceRefresh && this.accountsCache.data && cacheAge < this.CACHE_TTL) {
+      console.log('[TransactionsStore] Returning cached accounts');
+      return this.accountsCache.data;
+    }
 
     try {
       const { data, error } = await supabase
         .from('currency_balances')
-        .select('*')
+        .select('file_hash, file_name, file_size, currency, account_name, total_amount, transaction_count, average_transaction, largest_transaction, smallest_transaction, amounts, last_updated, updated_at')
         .eq('user_id', userId)
         .eq('status', 'completed')
         .order('updated_at', { ascending: false });
@@ -110,14 +121,36 @@ class TransactionsStore {
         });
       }
 
-      return Array.from(accountsMap.values());
+      const accounts = Array.from(accountsMap.values());
+
+      this.accountsCache = {
+        data: accounts,
+        timestamp: now
+      };
+
+      console.log('[TransactionsStore] Accounts cached');
+      return accounts;
     } catch (error) {
       console.error('[TransactionsStore] Error loading accounts:', error);
       return [];
     }
   }
 
+  clearCache(): void {
+    this.accountsCache = { data: null, timestamp: 0 };
+    this.balanceCache.clear();
+    console.log('[TransactionsStore] Cache cleared');
+  }
+
   async getCurrentBalance(fileHash: string, currency: string): Promise<number> {
+    const cacheKey = `${fileHash}:${currency}`;
+    const now = Date.now();
+    const cached = this.balanceCache.get(cacheKey);
+
+    if (cached && (now - cached.timestamp) < this.CACHE_TTL) {
+      return cached.balance;
+    }
+
     try {
       const { data, error } = await supabase
         .rpc('get_current_balance', {
@@ -126,7 +159,15 @@ class TransactionsStore {
         });
 
       if (error) throw error;
-      return parseFloat(data) || 0;
+
+      const balance = parseFloat(data) || 0;
+
+      this.balanceCache.set(cacheKey, {
+        balance,
+        timestamp: now
+      });
+
+      return balance;
     } catch (error) {
       console.error('[TransactionsStore] Error getting current balance:', error);
 
@@ -138,7 +179,14 @@ class TransactionsStore {
         .eq('status', 'completed')
         .maybeSingle();
 
-      return data ? parseFloat(data.total_amount) : 0;
+      const balance = data ? parseFloat(data.total_amount) : 0;
+
+      this.balanceCache.set(cacheKey, {
+        balance,
+        timestamp: now
+      });
+
+      return balance;
     }
   }
 
