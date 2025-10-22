@@ -1,160 +1,159 @@
-import { CurrencyBalance } from './balances-store';
-
-export interface WorkerMessage {
-  type: 'start' | 'pause' | 'resume' | 'stop' | 'progress';
-  payload?: any;
+interface WorkerMessage {
+  type: 'INITIALIZE' | 'PROCESS_CHUNK';
+  data: any;
 }
 
-export interface WorkerResponse {
-  type: 'progress' | 'complete' | 'error';
-  progress?: number;
-  balances?: CurrencyBalance[];
-  error?: string;
+interface WorkerResponse {
+  type: 'INITIALIZED' | 'CHUNK_PROCESSED' | 'ERROR';
+  data: any;
 }
 
-class ProcessingWorker {
-  private isProcessing = false;
-  private isPaused = false;
-  private shouldStop = false;
+interface CurrencyBalance {
+  currency: string;
+  totalAmount: number;
+  transactionCount: number;
+  amounts: number[];
+  largestTransaction: number;
+  smallestTransaction: number;
+}
 
-  async processFile(
-    fileData: ArrayBuffer,
-    fileName: string,
-    resumeFrom: number = 0,
-    onProgress: (progress: number, balances: CurrencyBalance[]) => void
-  ): Promise<void> {
-    this.isProcessing = true;
-    this.shouldStop = false;
+let currencyPatterns: Map<string, Uint8Array> = new Map();
 
-    const CHUNK_SIZE = 10 * 1024 * 1024;
-    const totalSize = fileData.byteLength;
-    let offset = resumeFrom;
-    const balanceTracker: { [currency: string]: CurrencyBalance } = {};
+self.onmessage = (e: MessageEvent<WorkerMessage>) => {
+  const { type, data } = e.data;
 
-    try {
-      while (offset < totalSize && !this.shouldStop) {
-        while (this.isPaused && !this.shouldStop) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+  try {
+    if (type === 'INITIALIZE') {
+      initializePatterns(data.patterns);
+      self.postMessage({
+        type: 'INITIALIZED',
+        data: { success: true }
+      } as WorkerResponse);
+    } else if (type === 'PROCESS_CHUNK') {
+      const { chunk, offset } = data;
+      const balances = processChunk(new Uint8Array(chunk), offset);
+
+      self.postMessage({
+        type: 'CHUNK_PROCESSED',
+        data: { balances, bytesProcessed: chunk.byteLength }
+      } as WorkerResponse);
+    }
+  } catch (error) {
+    self.postMessage({
+      type: 'ERROR',
+      data: { error: error instanceof Error ? error.message : 'Unknown error' }
+    } as WorkerResponse);
+  }
+};
+
+function initializePatterns(patterns: [string, number[]][]): void {
+  currencyPatterns.clear();
+
+  for (const [currency, pattern] of patterns) {
+    currencyPatterns.set(currency, new Uint8Array(pattern));
+  }
+
+  console.log('[Worker] Initialized with', currencyPatterns.size, 'currency patterns');
+}
+
+function processChunk(data: Uint8Array, offset: number): { [currency: string]: CurrencyBalance } {
+  const balances: { [currency: string]: CurrencyBalance } = {};
+  const dataLength = data.length;
+
+  for (let i = 0; i < dataLength - 11; i++) {
+    for (const [currency, pattern] of currencyPatterns) {
+      if (matchesPattern(data, i, pattern)) {
+        const amount = extractAmount(data, i + pattern.length);
+
+        if (amount > 0 && isValidAmount(amount)) {
+          addToBalance(balances, currency, amount);
+          i += pattern.length + 8;
+          break;
         }
-
-        if (this.shouldStop) break;
-
-        const chunkEnd = Math.min(offset + CHUNK_SIZE, totalSize);
-        const chunk = new Uint8Array(fileData, offset, chunkEnd - offset);
-
-        this.extractCurrencyBalances(chunk, offset, balanceTracker);
-
-        offset = chunkEnd;
-        const progress = (offset / totalSize) * 100;
-        const balancesArray = Object.values(balanceTracker).sort((a, b) => {
-          if (a.currency === 'USD') return -1;
-          if (b.currency === 'USD') return 1;
-          if (a.currency === 'EUR') return -1;
-          if (b.currency === 'EUR') return 1;
-          return b.totalAmount - a.totalAmount;
-        });
-
-        onProgress(progress, balancesArray);
-
-        await new Promise(resolve => setTimeout(resolve, 10));
       }
-
-      if (!this.shouldStop) {
-        const balancesArray = Object.values(balanceTracker);
-        onProgress(100, balancesArray);
-      }
-    } catch (error) {
-      console.error('[ProcessingWorker] Error:', error);
-      throw error;
-    } finally {
-      this.isProcessing = false;
     }
   }
 
-  pause(): void {
-    this.isPaused = true;
-  }
-
-  resume(): void {
-    this.isPaused = false;
-  }
-
-  stop(): void {
-    this.shouldStop = true;
-    this.isProcessing = false;
-  }
-
-  private extractCurrencyBalances(
-    data: Uint8Array,
-    offset: number,
-    currentBalances: { [currency: string]: CurrencyBalance }
-  ): void {
-    const currencies = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'INR', 'MXN', 'BRL', 'RUB', 'KRW', 'SGD', 'HKD'];
-
-    currencies.forEach(currency => {
-      const currencyBytes = new TextEncoder().encode(currency);
-
-      for (let i = 0; i <= data.length - currencyBytes.length - 8; i++) {
-        let match = true;
-        for (let j = 0; j < currencyBytes.length; j++) {
-          if (data[i + j] !== currencyBytes[j]) {
-            match = false;
-            break;
-          }
-        }
-
-        if (match) {
-          let amount = 0;
-
-          try {
-            if (i + currencyBytes.length + 4 <= data.length) {
-              const view = new DataView(data.buffer, data.byteOffset + i + currencyBytes.length, 4);
-              const potentialAmount = view.getUint32(0, true);
-
-              if (potentialAmount > 0 && potentialAmount < 100000000000) {
-                amount = potentialAmount / 100;
-              }
-            }
-
-            if (amount === 0 && i + currencyBytes.length + 8 <= data.length) {
-              const view = new DataView(data.buffer, data.byteOffset + i + currencyBytes.length, 8);
-              const potentialDouble = view.getFloat64(0, true);
-
-              if (potentialDouble > 0 && potentialDouble < 1000000000 && !isNaN(potentialDouble)) {
-                amount = potentialDouble;
-              }
-            }
-
-            if (amount > 0) {
-              if (!currentBalances[currency]) {
-                currentBalances[currency] = {
-                  currency,
-                  totalAmount: 0,
-                  transactionCount: 0,
-                  averageTransaction: 0,
-                  lastUpdated: new Date().toISOString(),
-                  accountName: `Cuenta en ${currency}`,
-                  amounts: [],
-                  largestTransaction: 0,
-                  smallestTransaction: Infinity,
-                };
-              }
-
-              const balance = currentBalances[currency];
-              balance.totalAmount += amount;
-              balance.transactionCount++;
-              balance.amounts.push(amount);
-              balance.averageTransaction = balance.totalAmount / balance.transactionCount;
-              balance.largestTransaction = Math.max(balance.largestTransaction, amount);
-              balance.smallestTransaction = Math.min(balance.smallestTransaction, amount);
-              balance.lastUpdated = new Date().toISOString();
-            }
-          } catch (error) {
-          }
-        }
-      }
-    });
-  }
+  return balances;
 }
 
-export const processingWorker = new ProcessingWorker();
+function matchesPattern(data: Uint8Array, offset: number, pattern: Uint8Array): boolean {
+  if (offset + pattern.length > data.length) return false;
+
+  for (let i = 0; i < pattern.length; i++) {
+    if (data[offset + i] !== pattern[i]) return false;
+  }
+
+  return true;
+}
+
+function extractAmount(data: Uint8Array, offset: number): number {
+  try {
+    if (offset + 4 <= data.length) {
+      const view = new DataView(data.buffer, data.byteOffset + offset, 4);
+      const potentialAmount = view.getUint32(0, true);
+
+      if (potentialAmount > 0 && potentialAmount < 100000000000) {
+        return potentialAmount / 100;
+      }
+    }
+
+    if (offset + 8 <= data.length) {
+      const view = new DataView(data.buffer, data.byteOffset + offset, 8);
+      const potentialDouble = view.getFloat64(0, true);
+
+      if (potentialDouble > 0 && potentialDouble < 1000000000 && !isNaN(potentialDouble)) {
+        return potentialDouble;
+      }
+    }
+  } catch (error) {
+  }
+
+  return 0;
+}
+
+function isValidAmount(amount: number): boolean {
+  if (amount === 0) return false;
+  if (amount < 0.01) return false;
+  if (amount > 10000000) return false;
+
+  const decimalPart = amount - Math.floor(amount);
+  const decimals = decimalPart.toFixed(10).split('.')[1]?.replace(/0+$/, '').length || 0;
+
+  if (decimals > 2) {
+    return false;
+  }
+
+  return true;
+}
+
+function addToBalance(
+  balances: { [currency: string]: CurrencyBalance },
+  currency: string,
+  amount: number
+): void {
+  if (!balances[currency]) {
+    balances[currency] = {
+      currency,
+      totalAmount: 0,
+      transactionCount: 0,
+      amounts: [],
+      largestTransaction: 0,
+      smallestTransaction: Infinity,
+    };
+  }
+
+  const balance = balances[currency];
+  balance.totalAmount += amount;
+  balance.transactionCount++;
+
+  if (balance.amounts.length >= 1000) {
+    balance.amounts.shift();
+  }
+  balance.amounts.push(amount);
+
+  balance.largestTransaction = Math.max(balance.largestTransaction, amount);
+  balance.smallestTransaction = Math.min(balance.smallestTransaction, amount);
+}
+
+export {};

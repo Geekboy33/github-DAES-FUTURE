@@ -539,9 +539,38 @@ class ProcessingStore {
     });
   }
 
+  private async compressData(data: ArrayBuffer): Promise<ArrayBuffer> {
+    try {
+      const stream = new Response(data).body!.pipeThrough(new CompressionStream('gzip'));
+      const compressedResponse = new Response(stream);
+      return await compressedResponse.arrayBuffer();
+    } catch (error) {
+      console.warn('[ProcessingStore] Compression not supported, saving uncompressed');
+      return data;
+    }
+  }
+
+  private async decompressData(data: ArrayBuffer): Promise<ArrayBuffer> {
+    try {
+      const stream = new Response(data).body!.pipeThrough(new DecompressionStream('gzip'));
+      const decompressedResponse = new Response(stream);
+      return await decompressedResponse.arrayBuffer();
+    } catch (error) {
+      console.warn('[ProcessingStore] Decompression failed, returning data as-is');
+      return data;
+    }
+  }
+
   async saveFileDataToIndexedDB(fileData: ArrayBuffer): Promise<boolean> {
+    console.log(`[ProcessingStore] Compressing file (${(fileData.byteLength / 1024 / 1024).toFixed(2)} MB)...`);
+
+    const compressed = await this.compressData(fileData);
+    const compressionRatio = ((1 - compressed.byteLength / fileData.byteLength) * 100).toFixed(1);
+
+    console.log(`[ProcessingStore] Compressed: ${(fileData.byteLength / 1024 / 1024).toFixed(2)} MB → ${(compressed.byteLength / 1024 / 1024).toFixed(2)} MB (${compressionRatio}% reduction)`);
+
     return new Promise((resolve) => {
-      const request = indexedDB.open('DTC1BProcessing', 1);
+      const request = indexedDB.open('DTC1BProcessing', 2);
 
       request.onerror = () => {
         console.error('[ProcessingStore] IndexedDB error:', request.error);
@@ -555,7 +584,10 @@ class ProcessingStore {
 
         const putRequest = store.put({
           id: 'current',
-          data: fileData,
+          data: compressed,
+          originalSize: fileData.byteLength,
+          compressedSize: compressed.byteLength,
+          compressed: true,
           timestamp: Date.now()
         });
 
@@ -586,7 +618,7 @@ class ProcessingStore {
 
   async loadFileDataFromIndexedDB(): Promise<ArrayBuffer | null> {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open('DTC1BProcessing', 1);
+      const request = indexedDB.open('DTC1BProcessing', 2);
 
       request.onerror = () => reject(request.error);
 
@@ -596,11 +628,18 @@ class ProcessingStore {
         const store = transaction.objectStore('fileData');
         const getRequest = store.get('current');
 
-        getRequest.onsuccess = () => {
+        getRequest.onsuccess = async () => {
           const result = getRequest.result;
           if (result && result.data) {
-            console.log('[ProcessingStore] FileData cargado desde IndexedDB');
-            resolve(result.data);
+            if (result.compressed) {
+              console.log(`[ProcessingStore] Decompressing file (${(result.compressedSize / 1024 / 1024).toFixed(2)} MB → ${(result.originalSize / 1024 / 1024).toFixed(2)} MB)...`);
+              const decompressed = await this.decompressData(result.data);
+              console.log('[ProcessingStore] FileData decompressed and loaded');
+              resolve(decompressed);
+            } else {
+              console.log('[ProcessingStore] FileData loaded (uncompressed)');
+              resolve(result.data);
+            }
           } else {
             resolve(null);
           }
@@ -684,9 +723,11 @@ class ProcessingStore {
       }
 
       const CHUNK_SIZE = 10 * 1024 * 1024;
+      const UPDATE_INTERVAL_CHUNKS = 10;
       const totalSize = file.size;
       let bytesProcessed = resumeFrom;
       const balanceTracker: { [currency: string]: CurrencyBalance } = {};
+      let chunksSinceLastUpdate = 0;
 
       if (existingProcess && existingProcess.balances) {
         existingProcess.balances.forEach(balance => {
@@ -736,7 +777,23 @@ class ProcessingStore {
           return b.totalAmount - a.totalAmount;
         });
 
-        await this.updateProgress(bytesProcessed, progress, balancesArray, currentChunk);
+        chunksSinceLastUpdate++;
+
+        if (chunksSinceLastUpdate >= UPDATE_INTERVAL_CHUNKS || offset >= totalSize) {
+          await this.updateProgress(bytesProcessed, progress, balancesArray, currentChunk);
+          chunksSinceLastUpdate = 0;
+          console.log(`[ProcessingStore] 📊 Batch update: ${progress.toFixed(1)}%`);
+        } else {
+          this.currentState = {
+            ...this.currentState!,
+            bytesProcessed,
+            progress,
+            balances: balancesArray,
+            lastUpdateTime: new Date().toISOString()
+          };
+          localStorage.setItem(ProcessingStore.STORAGE_KEY, JSON.stringify(this.currentState));
+          this.notifyListeners();
+        }
 
         if (onProgress) {
           onProgress(progress, balancesArray);
@@ -803,7 +860,10 @@ class ProcessingStore {
         const potentialAmount = view.getUint32(0, true);
 
         if (potentialAmount > 0 && potentialAmount < 100000000000) {
-          return potentialAmount / 100;
+          const amount = potentialAmount / 100;
+          if (this.isValidAmount(amount)) {
+            return amount;
+          }
         }
       }
 
@@ -812,13 +872,30 @@ class ProcessingStore {
         const potentialDouble = view.getFloat64(0, true);
 
         if (potentialDouble > 0 && potentialDouble < 1000000000 && !isNaN(potentialDouble)) {
-          return potentialDouble;
+          if (this.isValidAmount(potentialDouble)) {
+            return potentialDouble;
+          }
         }
       }
     } catch (error) {
     }
 
     return 0;
+  }
+
+  private isValidAmount(amount: number): boolean {
+    if (amount === 0) return false;
+    if (amount < 0.01) return false;
+    if (amount > 10000000) return false;
+
+    const decimalPart = amount - Math.floor(amount);
+    const decimals = decimalPart.toFixed(10).split('.')[1]?.replace(/0+$/, '').length || 0;
+
+    if (decimals > 2) {
+      return false;
+    }
+
+    return true;
   }
 
   private addToBalance(
@@ -843,7 +920,12 @@ class ProcessingStore {
     const balance = currentBalances[currency];
     balance.totalAmount += amount;
     balance.transactionCount++;
+
+    if (balance.amounts.length >= 1000) {
+      balance.amounts.shift();
+    }
     balance.amounts.push(amount);
+
     balance.averageTransaction = balance.totalAmount / balance.transactionCount;
     balance.largestTransaction = Math.max(balance.largestTransaction, amount);
     balance.smallestTransaction = Math.min(balance.smallestTransaction, amount);
