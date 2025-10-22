@@ -296,6 +296,31 @@ export interface Translations {
   // App Header
   logout: string;
   logoutTitle: string;
+
+  // Advanced Banking Dashboard
+  advDashboardTitle: string;
+  advDashboardSubtitle: string;
+  advDashboardTotalBalance: string;
+  advDashboardActiveAccounts: string;
+  advDashboardTransactions: string;
+  advDashboardMovements: string;
+  advDashboardDebits: string;
+  advDashboardCredits: string;
+  advDashboardFees: string;
+  advDashboardLedgerAccounts: string;
+  advDashboardCurrencyDistribution: string;
+  advDashboardTransactionHistory: string;
+  advDashboardNoTransactions: string;
+  advDashboardNoTransactionsMessage: string;
+  advDashboardAllPeriods: string;
+  advDashboardLast24h: string;
+  advDashboardLast7d: string;
+  advDashboardLast30d: string;
+  advDashboardAllCurrencies: string;
+  advDashboardUpdate: string;
+  advDashboardUpdating: string;
+  advDashboardHideBalance: string;
+  advDashboardShowBalance: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -590,6 +615,31 @@ export const translations: Record<Language, Translations> = {
     // App Header
     logout: 'Salir',
     logoutTitle: 'Cerrar Sesión',
+
+    // Advanced Banking Dashboard
+    advDashboardTitle: 'Dashboard Bancario',
+    advDashboardSubtitle: 'Sistema de gestión financiera avanzado',
+    advDashboardTotalBalance: 'Balance Total',
+    advDashboardActiveAccounts: 'Cuentas Activas',
+    advDashboardTransactions: 'Transacciones',
+    advDashboardMovements: 'Movimientos',
+    advDashboardDebits: 'Débitos',
+    advDashboardCredits: 'Créditos',
+    advDashboardFees: 'Comisiones',
+    advDashboardLedgerAccounts: 'Cuentas del Ledger (15 Divisas)',
+    advDashboardCurrencyDistribution: 'Distribución por Moneda',
+    advDashboardTransactionHistory: 'Historial de Transacciones',
+    advDashboardNoTransactions: 'No hay transacciones para mostrar',
+    advDashboardNoTransactionsMessage: 'Las transacciones aparecerán aquí cuando realices operaciones',
+    advDashboardAllPeriods: 'Todas',
+    advDashboardLast24h: 'Últimas 24h',
+    advDashboardLast7d: 'Última semana',
+    advDashboardLast30d: 'Último mes',
+    advDashboardAllCurrencies: 'Todas las monedas',
+    advDashboardUpdate: 'Actualizar',
+    advDashboardUpdating: 'Actualizando...',
+    advDashboardHideBalance: 'Ocultar balance',
+    advDashboardShowBalance: 'Mostrar balance',
   },
 
   en: {
@@ -883,6 +933,31 @@ export const translations: Record<Language, Translations> = {
     // App Header
     logout: 'Logout',
     logoutTitle: 'Sign Out',
+
+    // Advanced Banking Dashboard
+    advDashboardTitle: 'Banking Dashboard',
+    advDashboardSubtitle: 'Advanced financial management system',
+    advDashboardTotalBalance: 'Total Balance',
+    advDashboardActiveAccounts: 'Active Accounts',
+    advDashboardTransactions: 'Transactions',
+    advDashboardMovements: 'Movements',
+    advDashboardDebits: 'Debits',
+    advDashboardCredits: 'Credits',
+    advDashboardFees: 'Fees',
+    advDashboardLedgerAccounts: 'Ledger Accounts (15 Currencies)',
+    advDashboardCurrencyDistribution: 'Currency Distribution',
+    advDashboardTransactionHistory: 'Transaction History',
+    advDashboardNoTransactions: 'No transactions to display',
+    advDashboardNoTransactionsMessage: 'Transactions will appear here when you perform operations',
+    advDashboardAllPeriods: 'All',
+    advDashboardLast24h: 'Last 24h',
+    advDashboardLast7d: 'Last week',
+    advDashboardLast30d: 'Last month',
+    advDashboardAllCurrencies: 'All currencies',
+    advDashboardUpdate: 'Update',
+    advDashboardUpdating: 'Updating...',
+    advDashboardHideBalance: 'Hide balance',
+    advDashboardShowBalance: 'Show balance',
   },
 };
 

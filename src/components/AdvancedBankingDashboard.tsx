@@ -227,8 +227,8 @@ export function AdvancedBankingDashboard() {
                 <Shield className="w-8 h-8 text-black" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-[#e0ffe0]">Dashboard Bancario</h1>
-                <p className="text-[#80ff80] text-sm">Sistema de gestión financiera avanzado</p>
+                <h1 className="text-3xl font-bold text-[#e0ffe0]">{t.advDashboardTitle}</h1>
+                <p className="text-[#80ff80] text-sm">{t.advDashboardSubtitle}</p>
               </div>
             </div>
             <button
@@ -237,7 +237,7 @@ export function AdvancedBankingDashboard() {
               className="flex items-center gap-2 bg-[#00ff88] hover:bg-[#00cc6a] text-black px-4 py-2 rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Actualizar
+              {refreshing ? t.advDashboardUpdating : t.advDashboardUpdate}
             </button>
           </div>
         </div>
@@ -252,17 +252,17 @@ export function AdvancedBankingDashboard() {
                 {balanceVisible ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
               </button>
             </div>
-            <p className="text-[#80ff80] text-sm mb-2">Balance Total</p>
+            <p className="text-[#80ff80] text-sm mb-2">{t.advDashboardTotalBalance}</p>
             <p className="text-3xl font-black text-[#e0ffe0] drop-shadow-[0_0_10px_rgba(0,255,136,0.5)]">
               {balanceVisible ? `$${dashboardStats.totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '••••••'}
             </p>
-            <p className="text-[#4d7c4d] text-xs mt-2">{dashboardStats.totalCurrencies} monedas</p>
+            <p className="text-[#4d7c4d] text-xs mt-2">{dashboardStats.totalCurrencies} {t.dashboardCurrenciesDetected}</p>
           </div>
 
           {/* Accounts */}
           <div className="bg-gradient-to-br from-[#0a0a0a] to-[#0d0d0d] border border-[#00ff88]/30 rounded-xl p-6 hover:shadow-[0_0_20px_rgba(0,255,136,0.2)] transition-all">
             <Database className="w-10 h-10 text-[#00ff88] mb-4" />
-            <p className="text-[#80ff80] text-sm mb-2">Cuentas Activas</p>
+            <p className="text-[#80ff80] text-sm mb-2">{t.advDashboardActiveAccounts}</p>
             <p className="text-3xl font-black text-[#e0ffe0]">{dashboardStats.totalAccounts}</p>
             <p className="text-[#4d7c4d] text-xs mt-2">{dashboardStats.totalCurrencies} divisas</p>
           </div>
@@ -282,18 +282,18 @@ export function AdvancedBankingDashboard() {
           {/* Movement Summary */}
           <div className="bg-gradient-to-br from-[#0a0a0a] to-[#0d0d0d] border border-[#00ff88]/30 rounded-xl p-6 hover:shadow-[0_0_20px_rgba(0,255,136,0.2)] transition-all">
             <TrendingUp className="w-10 h-10 text-[#00ff88] mb-4" />
-            <p className="text-[#80ff80] text-sm mb-2">Movimientos</p>
+            <p className="text-[#80ff80] text-sm mb-2">{t.advDashboardMovements}</p>
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-[#80ff80]">Débitos:</span>
+                <span className="text-xs text-[#80ff80]">{t.advDashboardDebits}:</span>
                 <span className="text-sm font-bold text-red-400">${dashboardStats.totalDebits.toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-[#80ff80]">Créditos:</span>
+                <span className="text-xs text-[#80ff80]">{t.advDashboardCredits}:</span>
                 <span className="text-sm font-bold text-[#00ff88]">${dashboardStats.totalCredits.toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-[#80ff80]">Comisiones:</span>
+                <span className="text-xs text-[#80ff80]">{t.advDashboardFees}:</span>
                 <span className="text-sm font-bold text-yellow-500">${dashboardStats.totalFees.toFixed(2)}</span>
               </div>
             </div>
@@ -304,7 +304,7 @@ export function AdvancedBankingDashboard() {
         <div className="bg-gradient-to-br from-[#0a0a0a] to-[#0d0d0d] border border-[#00ff88]/20 rounded-xl p-6">
           <div className="flex items-center gap-3 mb-6">
             <Database className="w-6 h-6 text-[#00ff88]" />
-            <h2 className="text-2xl font-bold text-[#e0ffe0]">Cuentas del Ledger (15 Divisas)</h2>
+            <h2 className="text-2xl font-bold text-[#e0ffe0]">{t.advDashboardLedgerAccounts}</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
@@ -353,7 +353,7 @@ export function AdvancedBankingDashboard() {
         <div className="bg-gradient-to-br from-[#0a0a0a] to-[#0d0d0d] border border-[#00ff88]/20 rounded-xl p-6">
           <div className="flex items-center gap-3 mb-6">
             <PieChart className="w-6 h-6 text-[#00ff88]" />
-            <h2 className="text-2xl font-bold text-[#e0ffe0]">Distribución por Moneda</h2>
+            <h2 className="text-2xl font-bold text-[#e0ffe0]">{t.advDashboardCurrencyDistribution}</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -406,7 +406,7 @@ export function AdvancedBankingDashboard() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-3">
               <FileText className="w-6 h-6 text-[#00ff88]" />
-              <h2 className="text-2xl font-bold text-[#e0ffe0]">Historial de Transacciones</h2>
+              <h2 className="text-2xl font-bold text-[#e0ffe0]">{t.advDashboardTransactionHistory}</h2>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -416,10 +416,10 @@ export function AdvancedBankingDashboard() {
                 onChange={(e) => setSelectedPeriod(e.target.value as any)}
                 className="bg-[#0d0d0d] border border-[#00ff88]/30 text-[#e0ffe0] px-3 py-2 rounded-lg text-sm focus:border-[#00ff88] focus:outline-none"
               >
-                <option value="all">Todas</option>
-                <option value="24h">Últimas 24h</option>
-                <option value="7d">Última semana</option>
-                <option value="30d">Último mes</option>
+                <option value="all">{t.advDashboardAllPeriods}</option>
+                <option value="24h">{t.advDashboardLast24h}</option>
+                <option value="7d">{t.advDashboardLast7d}</option>
+                <option value="30d">{t.advDashboardLast30d}</option>
               </select>
 
               {/* Currency Filter */}
@@ -428,7 +428,7 @@ export function AdvancedBankingDashboard() {
                 onChange={(e) => setSelectedCurrency(e.target.value)}
                 className="bg-[#0d0d0d] border border-[#00ff88]/30 text-[#e0ffe0] px-3 py-2 rounded-lg text-sm focus:border-[#00ff88] focus:outline-none"
               >
-                <option value="all">Todas las monedas</option>
+                <option value="all">{t.advDashboardAllCurrencies}</option>
                 {currencyStats.map(stats => (
                   <option key={stats.currency} value={stats.currency}>{stats.currency}</option>
                 ))}
@@ -439,8 +439,8 @@ export function AdvancedBankingDashboard() {
           {filteredTransactions.length === 0 ? (
             <div className="text-center py-12">
               <AlertCircle className="w-16 h-16 text-[#80ff80] mx-auto mb-4 opacity-50" />
-              <p className="text-[#80ff80] text-lg">No hay transacciones para mostrar</p>
-              <p className="text-[#4d7c4d] text-sm mt-2">Las transacciones aparecerán aquí cuando realices operaciones</p>
+              <p className="text-[#80ff80] text-lg">{t.advDashboardNoTransactions}</p>
+              <p className="text-[#4d7c4d] text-sm mt-2">{t.advDashboardNoTransactionsMessage}</p>
             </div>
           ) : (
             <div className="space-y-2 max-h-[500px] overflow-y-auto">
