@@ -18,6 +18,8 @@ import { LargeFileDTC1BAnalyzer } from './components/LargeFileDTC1BAnalyzer';
 import { XcpB2BInterface } from './components/XcpB2BInterface';
 import { AccountLedger } from './components/AccountLedger';
 import { BankBlackScreen } from './components/BankBlackScreen';
+import { GlobalProcessingIndicator } from './components/GlobalProcessingIndicator';
+import { processingStore } from './lib/processing-store';
 
 type Tab = 'dashboard' | 'processor' | 'transfer' | 'api-keys' | 'audit' | 'binary-reader' | 'hex-viewer' | 'large-file-analyzer' | 'xcp-b2b' | 'ledger' | 'blackscreen';
 
@@ -26,6 +28,24 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { t } = useLanguage();
   const { isAuthenticated, user, login, logout } = useAuth();
+
+  // Efecto para mantener procesamiento global activo al cambiar de módulo
+  useEffect(() => {
+    // Verificar si hay procesamiento pendiente al cargar
+    const state = processingStore.getState();
+    if (state && (state.status === 'processing' || state.status === 'paused')) {
+      console.log('[App] Proceso pendiente detectado:', state.fileName, state.progress.toFixed(2) + '%');
+    }
+
+    // Suscribirse a cambios para logging
+    const unsubscribe = processingStore.subscribe((state) => {
+      if (state && state.status === 'processing') {
+        // El procesamiento continúa independientemente del módulo activo
+      }
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Mostrar login si no está autenticado
   if (!isAuthenticated) {
@@ -64,6 +84,8 @@ function App() {
               <button
                 onClick={() => setIsMobileMenuOpen(true)}
                 className="lg:hidden p-2 hover:bg-[#1a1a1a] rounded-lg transition-colors"
+                title="Abrir menú de navegación"
+                aria-label="Abrir menú de navegación"
               >
                 <Menu className="w-6 h-6 text-[#00ff88]" />
               </button>
@@ -153,6 +175,9 @@ function App() {
           </div>
         </div>
       </footer>
+      
+      {/* Indicador global de procesamiento */}
+      <GlobalProcessingIndicator />
     </div>
   );
 }

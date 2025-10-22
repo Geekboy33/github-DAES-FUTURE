@@ -193,55 +193,55 @@ export function XcpB2BInterface() {
 
   return (
     <div className="flex flex-col h-full bg-black overflow-auto">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
-              <Building2 className="w-8 h-8" />
-              XCP B2B API - Remesas Internacionales
+      {/* Header con tema homogéneo */}
+      <div className="bg-gradient-to-r from-[#0a0a0a] to-[#0d0d0d] border-b border-[#00ff88]/20 p-4 sm:p-6 lg:p-8 shadow-[0_0_30px_rgba(0,255,136,0.2)]">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex-1">
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#e0ffe0] mb-2 flex items-center gap-2 sm:gap-3">
+              <Building2 className="w-6 h-6 sm:w-8 sm:h-8 text-[#00ff88]" />
+              <span className="text-cyber">XCP B2B API</span>
             </h1>
-            <p className="text-purple-100">
-              Transferencias bancarias seguras con mTLS + HMAC-SHA256
+            <p className="text-[#80ff80] text-sm sm:text-base">
+              Remesas Internacionales • mTLS • HMAC-SHA256
             </p>
           </div>
-          <Shield className="w-16 h-16 text-white opacity-20" />
+          <Shield className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 text-[#00ff88] opacity-20 hidden sm:block" />
         </div>
       </div>
 
-      <div className="p-6 max-w-6xl mx-auto w-full space-y-6">
+      <div className="p-3 sm:p-4 lg:p-6 max-w-6xl mx-auto w-full space-y-4 sm:space-y-6">
         {/* Security Features Banner */}
-        <div className="bg-[#0d0d0d] rounded-xl p-6 border border-purple-500/30">
-          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-            <Shield className="w-5 h-5 text-purple-400" />
-            Características de Seguridad
+        <div className="bg-[#0d0d0d] border border-[#00ff88]/20 rounded-xl p-4 sm:p-6 shadow-[0_0_20px_rgba(0,255,136,0.1)]">
+          <h3 className="text-base sm:text-lg font-bold text-[#e0ffe0] mb-4 flex items-center gap-2">
+            <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-[#00ff88]" />
+            <span className="text-cyber">Características de Seguridad</span>
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3">
-              <Key className="w-8 h-8 text-[#00ff88]" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 bg-[#00ff88]/5 border border-[#00ff88]/10 rounded-lg p-2 sm:p-3">
+              <Key className="w-6 h-6 sm:w-8 sm:h-8 text-[#00ff88] flex-shrink-0" />
               <div>
-                <div className="text-sm font-semibold text-white">mTLS</div>
+                <div className="text-xs sm:text-sm font-semibold text-[#e0ffe0]">mTLS</div>
                 <div className="text-xs text-[#80ff80]">TLS ≥ 1.2</div>
               </div>
             </div>
-            <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3">
-              <Shield className="w-8 h-8 text-green-400" />
+            <div className="flex items-center gap-2 sm:gap-3 bg-[#00ff88]/5 border border-[#00ff88]/10 rounded-lg p-2 sm:p-3">
+              <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-[#00ff88] flex-shrink-0" />
               <div>
-                <div className="text-sm font-semibold text-white">HMAC</div>
+                <div className="text-xs sm:text-sm font-semibold text-[#e0ffe0]">HMAC</div>
                 <div className="text-xs text-[#80ff80]">SHA-256</div>
               </div>
             </div>
-            <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3">
-              <Zap className="w-8 h-8 text-yellow-400" />
+            <div className="flex items-center gap-2 sm:gap-3 bg-[#00ff88]/5 border border-[#00ff88]/10 rounded-lg p-2 sm:p-3">
+              <Zap className="w-6 h-6 sm:w-8 sm:h-8 text-[#ffa500] flex-shrink-0" />
               <div>
-                <div className="text-sm font-semibold text-white">JWT</div>
+                <div className="text-xs sm:text-sm font-semibold text-[#e0ffe0]">JWT</div>
                 <div className="text-xs text-[#80ff80]">Bearer Auth</div>
               </div>
             </div>
-            <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3">
-              <Activity className="w-8 h-8 text-purple-400" />
+            <div className="flex items-center gap-2 sm:gap-3 bg-[#00ff88]/5 border border-[#00ff88]/10 rounded-lg p-2 sm:p-3">
+              <Activity className="w-6 h-6 sm:w-8 sm:h-8 text-[#00cc6a] flex-shrink-0" />
               <div>
-                <div className="text-sm font-semibold text-white">Anti-Replay</div>
+                <div className="text-xs sm:text-sm font-semibold text-[#e0ffe0]">Anti-Replay</div>
                 <div className="text-xs text-[#80ff80]">±5 min</div>
               </div>
             </div>
